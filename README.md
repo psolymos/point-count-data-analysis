@@ -59,7 +59,11 @@ for analysing point count data arising from avian field surveys
 
 ## Course outline
 
-Day 1
+### [Day 0: Getting ready](./day-00/README.md)
+
+- Prerequisites and setup instructions
+
+### [Day 1: Laying the groundwork](./day-01/README.md)
 
 - Introduction and background
 - Review of field sampling techniques
@@ -68,7 +72,7 @@ Day 1
 - Naïve estimates of occupancy and abundance
 - Multiple visits and N-mixture models
 
-Day 2
+### [Day 2: Understanding mechanisms](./day-02/README.md)
 
 - Bird behaviour
 - Time-removal models
@@ -76,7 +80,7 @@ Day 2
 - Distance sampling
 - Combining removal and distance sampling (QPAD)
 
-Day 3
+### [Day 3: Advanced topics](./day-03/README.md)
 
 - Single visit-based approaches (N-mixture and SQPAD)
 - Analysing data from recording units
