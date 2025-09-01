@@ -25,5 +25,5 @@ Free resources to brush up your knowledge:
 To install all the packages you need, use the following script in R:
 
 ```R
-source("https://raw.githubusercontent.com/psolymos/point-count-data-analysis-workshop-2025-workshop/main/src/day-00/install.R")
+source("https://raw.githubusercontent.com/psolymos/point-count-data-analysis-workshop-2025/refs/heads/main/day-00/install.R")
 ```
