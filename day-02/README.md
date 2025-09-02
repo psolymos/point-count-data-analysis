@@ -1,5 +1,6 @@
 # Day 2: Understanding mechanisms
 
+- Introduction to agent-based simulations
 - Bird behaviour
 - Time-removal models
 - Observation process

@@ -22,7 +22,8 @@ Free resources to brush up your knowledge:
 - [Install R](https://cran.r-project.org/)
 - [Install RStudio IDE](https://posit.co/download/rstudio-desktop/) (als, feel free to use your favorite IDE)
 
-To install all the packages you need, use the following script in R:
+Install required packages with the
+[`install.R`](./install.R) script:
 
 ```R
 source(paste0("https://raw.githubusercontent.com/",

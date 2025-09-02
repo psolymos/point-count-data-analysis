@@ -67,13 +67,13 @@ for analysing point count data arising from avian field surveys
 
 - Introduction and background
 - Review of field sampling techniques
-- Introduction to agent-based simulations
 - Overview of regression techniques
 - Naïve estimates of occupancy and abundance
 - Multiple visits and N-mixture models
 
 ### [Day 2: Understanding mechanisms](./day-02/README.md)
 
+- Introduction to agent-based simulations
 - Bird behaviour
 - Time-removal models
 - Observation process
