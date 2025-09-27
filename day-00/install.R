@@ -5,13 +5,15 @@ if (getRversion() < 4) {
 }
 cat("OK\n* Installing R packages ... \n")
 
-pkgs <- c("bookdown", "detect", "remotes", "dismo",
+pkgs <- c("bookdown", "remotes", "dismo",
   "Distance", "forecast", "glmnet", "gbm", "intrval",
   "knitr", "lme4", "maptools", "mefa4", "corrplot", "sf",
   "mgcv", "MuMIn", "opticut", "partykit", "pscl", "raster",
   "ResourceSelection", "shiny", "unmarked", "visreg")
-gh_pkgs <- c(bSims="psolymos/bSims",
-             lhreg="psolymos/lhreg")
+
+gh_pkgs <- c(bSims="psolymos/bSims", # use dev
+             detect="psolymos/detect", # use dev
+             lhreg="psolymos/lhreg") # not on CRAN
 
 to_inst <- setdiff(pkgs, rownames(installed.packages()))
 if (length(to_inst)) {
