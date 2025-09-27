@@ -71,12 +71,14 @@ interspersed with hands-on mini practicals and longer projects. Data sets for co
 practicals will be provided by the instructors, but participants are welcome to bring their own
 data.
 
-## Assumed quantitative knowledge
+## Prerequisites
+
+### Assumed quantitative knowledge
 
 A basic understanding of statistical, mathematical and physical concepts. Specifically,
 generalised linear regression models, including mixed models; basic knowledge of calculus.
 
-## Assumed computer background
+### Assumed computer background
 
 Familiarity with R, ability to import/export data, manipulate data frames, fit basic statistical
 models (up to GLM) and generate simple exploratory and diagnostic plots.
