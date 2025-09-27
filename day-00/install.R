@@ -1,4 +1,4 @@
-cat("Helo!\n\nThis script will install required R packages for the\nPoint Count Data AnalysisWorkshop.\n\nHang tight ...\n\n* Checking R version ... ")
+cat("Helo!\n\nThis script will install required R packages for the\nPoint Count Data Analysis Workshop.\n\nHang tight ...\n\n* Checking R version ... ")
 if (getRversion() < 4) {
   stop(paste0("R version ", getRversion(), " detected.",
     " Please upgrade to R >= 4.0"))
