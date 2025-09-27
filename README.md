@@ -50,43 +50,19 @@ for analysing point count data arising from avian field surveys
 
 ## Course details
 
-- Venue -- Delivered remotely
-- Time zone -- UK (GMT)
-- Duration -- 3 days
-- Contact hours -- Approx. 12 hours
-- ECT’s -- Equal to 3 ECT’s
-- Language -- English
+- Venue: Delivered remotely
+- Time zone: UK (GMT)
+- Duration: 3 days
+- Contact hours: Approx. 12 hours
+- ECT’s: Equal to 3 ECT’s
+- Language: English
 
 ## Course outline
 
-### [Day 0: Getting ready](./day-00/README.md)
-
-- Prerequisites and setup instructions
-
-### [Day 1: Laying the groundwork](./day-01/README.md)
-
-- Introduction and background
-- Review of field sampling techniques
-- Overview of regression techniques
-- Naïve estimates of occupancy and abundance
-- Multiple visits and N-mixture models
-
-### [Day 2: Understanding mechanisms](./day-02/README.md)
-
-- Introduction to agent-based simulations
-- Bird behaviour
-- Time-removal models
-- Observation process
-- Distance sampling
-- Combining removal and distance sampling (QPAD)
-
-### [Day 3: Advanced topics](./day-03/README.md)
-
-- Single visit-based approaches (N-mixture and SQPAD)
-- Analysing data from recording units
-- Multi-species models and using species traits and phylogeny
-- Dealing with roadside and other biases
-- Closing remarks
+- [Day 0: Getting ready](./day-00/README.md)
+- [Day 1: Laying the groundwork](./day-01/README.md)
+- [Day 2: Understanding mechanisms](./day-02/README.md)
+- [Day 3: Advanced topics](./day-03/README.md)
 
 ## Teaching Format
 
