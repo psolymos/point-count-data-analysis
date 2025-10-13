@@ -1,7 +1,7 @@
 dryrun <- FALSE
 ask <- TRUE
 
-cat("Helo!\n\nThis script will install required R packages for the\nPoint Count Data Analysis Workshop.\n\n")
+cat("Helo!\n\nThis script will install required R packages for the\n'Point Count Data Analysis Workshop'.\n\n")
 
 if (ask) {
   cat("Do you want to proceed?")
