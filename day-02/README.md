@@ -1,7 +1,7 @@
 # Day 2: Understanding mechanisms
 
 - Introduction to agent-based simulations [30 min]
-- Bird behaviour [30 min]
+- Bird behavior [30 min]
 - BREAK [15 min]
 - Time-removal models [30 min]
 - Observation process [30 min]
