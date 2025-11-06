@@ -11,7 +11,7 @@ format:
 
 ```{r}
 #| include: false
-options(width = 53, scipen = 999)
+# options(width = 53, scipen = 999)
 library(knitr)
 set.seed(0)
 library(dplyr)
@@ -199,7 +199,7 @@ Key assumptions are the following:
 We can generalize the simulation code to any number of `T` visits as:
 
 ```{r}
-T <- 2
+T <- 5
 Y <- matrix(NA, n, T)
 for (t in 1:T) {
     Y[, t] <- rbinom(n = n, size = W, prob = p.true)
@@ -239,6 +239,14 @@ Y_max <- apply(Y, 1, max)
 table(W = W, Y_max = Y_max)
 ```
 
+Fit the logistic regression model to `Y_max`:
+
+```{r}
+m2 <- glm(Y_max ~ 1, family = binomial)
+coef(m2)
+plogis(coef(m2))
+```
+
 ::: {.callout-tip}
 ## What happens when we increase the number of visits?
 
@@ -246,29 +254,30 @@ Change the value of `T` and compare the `Y_max` to `W`.
 What happens to our _naive_ estimator of using `Y_max`?
 :::
 
+The maximum over a large number of visits will approach the latent
+variable `W`:
+
 ```{r}
+#| eval: false
+n2 <- 500
+W2 <- rbinom(n = n2, size = 1, prob = phi.true)
+Tvals <- 1:10
+
 data.frame(
-    T = 1:10,
-    Y_max = sapply(1:10, \(T) {
+    T = Tvals,
+    Y_max = sapply(Tvals, \(T) {
         mean(apply(
-            replicate(T, rbinom(n = n, size = W, prob = p.true)),
+            replicate(T, rbinom(n = n2, size = W, prob = p.true)),
             1, max
         ))
     })
 ) |> ggplot(aes(x = T, y = Y_max)) +
     geom_hline(yintercept = phi.true, lty = 2, col = 2) +
+    geom_hline(yintercept = mean(W), lty = 2, col = 4) +
     geom_line() +
     ylim(0, 1) +
-    scale_x_continuous(breaks = 1:10) +
+    scale_x_continuous(breaks = Tvals) +
     theme_light()
-```
-
-Fit the logistic regression model to `Y_max`:
-
-```{r}
-m2 <- glm(Y_max ~ 1, family = binomial)
-coef(m2)
-plogis(coef(m2))
 ```
 
 ## Fitting occupancy models
@@ -278,10 +287,11 @@ The unmarked package implements the multiple-visit occupancy model.
 ::: {.callout-caution collapse="true"}
 ## References
 
-Mac Kenzie et al. 2002.
+MacKenzie et al., 2002.
 Estimating site occupancy rates when detection\nprobabilities are less than one.
 Ecology, 83:2248--2255.
-[Fulltext](https://www.sfu.ca/~lmgonigl/materials-qm/papers/mackenzie-2002-2248.pdf)
+[Fulltext](https://www.sfu.ca/~lmgonigl/materials-qm/papers/mackenzie-2002-2248.pdf),
+DOI 10.1890/0012-9658(2002)083[2248:ESORWD]2.0.CO;2
 :::
 
 - Organize the data and an unmarked occupancy data frame
@@ -344,9 +354,10 @@ while keeping the data `Y` constant. We set up the grid for this using
 `expand.grid()`:
 
 ```{r}
+g <- 100
 grid <- expand.grid(
-    p = seq(0, 1, by = 0.01),
-    phi = seq(0, 1, by = 0.01),
+    p = seq(0, 1, length.out = g),
+    phi = seq(0, 1, length.out = g),
     L = NA
 )
 
@@ -364,7 +375,11 @@ the true probability values:
 
 ```{r}
 image(
-    matrix(grid$L, sqrt(nrow(grid))),
+    list(
+        x = unique(grid$p),
+        y = unique(grid$phi),
+        z = matrix(grid$L, g, g)
+    ),
     xlab = "p",
     ylab = expression(varphi)
 )
@@ -375,7 +390,7 @@ grid |> ggplot(aes(x = p, y = phi, z = L)) +
     geom_hline(yintercept = phi.true) +
     geom_vline(xintercept = p.true) +
     xlab("p") +
-    ylab(expression(varphi)) +
+    ylab(expression(phi)) +
     theme_light()
 ```
 
@@ -384,117 +399,210 @@ If the rgl package is installed, we can view the surface in 3D:
 ```{r}
 if (interactive()) {
     library(rgl)
-    L_mat <- matrix(grid$L, sqrt(nrow(grid)))
-    open3d()
-    bg3d("white")
-    material3d(col = "black")
+
+    L_mat <- matrix(grid$L, g, g)
     dcpal_grbu <- colorRampPalette(c("#18bc9c", "#3498db"))
     Col <- rev(dcpal_grbu(12))[cut(L_mat, breaks = 12)]
-    persp3d(L_mat / max(L_mat),
+
+    open3d()
+    persp3d(
+        x = unique(grid$p),
+        y = unique(grid$phi),
+        z = L_mat / max(L_mat),
         col = Col,
         theta = 50, phi = 25, expand = 0.75, ticktype = "detailed",
-        ylab = "p", xlab = "phi", zlab = "L"
+        xlab = "p", ylab = expression(phi), zlab = "L"
+    )
+    quads3d(
+        x = rep(p.true, 4),
+        y = c(0, 0, 1, 1),
+        z = c(0, 1, 1, 0),
+        alpha = 0.5, col = 2
+    )
+    quads3d(
+        x = c(0, 0, 1, 1),
+        y = rep(phi.true, 4),
+        z = c(0, 1, 1, 0),
+        alpha = 0.5, col = 4
     )
 }
 ```
 
 ::: {.callout-note}
-We will circle back to these plots later.
+We will circle back to these plots later, feel free to explore it
+with different settings of $n$, $T$, $p$, and $\phi$.
 :::
 
 # Simulating count data
 
-Simulate N
+Simulating counts is similar to occupancy. We need a count distribution.
+The most basic count distribution is Poisson which has 1 parameter,
+$\lambda$, which is the mean. The variance also happens to equal the mean.
+Use the `rpois()` function in R to generate random numbers from the
+poisson distribution. Here, $N_i$ ($i=1,\ldots,n$) is the abundance 
+(number of individuals) at the $i$th location.
+
+```{r}
+lambda.true <- 4.2
+N <- rpois(n = n, lambda = lambda.true)
+
+table(N)
+summary(N)
+
+table(N) |> plot(ylab = "Frequency")
+```
 
 ## Observation error for counts
 
-Crosstab of N and Y
+Here is how we introduce observation error to count data:
+
+- select a location,
+- take the count $N_i$,
+- for each individual ($1, 2, \ldots, N_i$), use the Bernoulli distribution with probability $p$
+  to determine if the individual was detected (1) or not (0)
+
+The number of individuals detected ($Y_i$) is less than or equal to $N_i$:
+$Y_i \le N_i$. For example, if $N_i = 4$, $Y_i$ can be 0, 1, 2, 3, or 4.
+
+To express things mon concisely, we can also use a Binomial distribution
+with $N_i$ as the number of trials and probability $p$:
+
+```{r}
+Y <- rbinom(n = n, size = N, prob = p.true)
+
+print(table(N = N, Y = Y), zero.print = ".")
+```
 
 ## Count data with multiple visits
 
-Show the max, naive etc
-
-## Fitting N-mixture models
-
-xxx
-
-## N-mixture likelihood
-
-- Multiple-visit abundance modeling
-- Show the likelihood
-
-Use qmd <https://quarto-dev.github.io/quarto-gallery/page-layout/tufte.html>
-<https://raw.githubusercontent.com/quarto-dev/quarto-gallery/main/page-layout/tufte.qmd>
-
-Hello.
-
-
-<https://github.com/datacloning/workshop-2023-edmonton/tree/main/02-mixed-models>
-
-
-
-Occupancy likelihood: eq 1, <https://www.sfu.ca/~lmgonigl/materials-qm/papers/mackenzie-2002-2248.pdf>
-
-We use the following notation throughout this article:
-ci, probability that a species is present at site i; p it,
-probability that a species will be detected at site i at
-time t, given presence; N, total number of surveyed
-
-sites; T, number of distinct sampling occasions; n t num-
-ber of sites where the species was detected at time t;
-n., total number of sites at which the species was de-
-tected at least once.
-
-
-
-- decrease/increase n, what do you see?
-- decrease/increase T, what do you see?
-
-N-mixture:
-
-::: {.callout-caution collapse="true"}
-## References
-
-Royle
-
-:::
-
-https://datacloning.org/courses/2016/madison/abundance.html
-https://pmc.ncbi.nlm.nih.gov/articles/PMC4406156/
+When visiting each site $T$ times, the observed data will be organized in a
+$n$ by $T$ matrix as how we saw it for occupancy:
 
 ```{r}
-set.seed(1234)
-n <- 200
-T <- 4
-p.true <- 0.6
-lambda.true <- 4.2
-N <- rpois(n = n, lambda = lambda.true)
 Y <- matrix(NA, n, T)
 for (t in 1:T) {
     Y[, t] <- rbinom(n = n, size = N, prob = p.true)
 }
-table(N = N, Y = apply(Y, 1, max))
 
+# alternatively
+# Y <- replicate(T, rbinom(n = n, size = N, prob = p.true))
+```
+
+Multiple-visit count model have similar assumptions as occupancy models,
+most importantly that $N_{it}=N_i$. This condition is also referred to as
+the closed population assumption, i.e. there is no immigration,
+emigration, birth, or death between visits.
+
+```{r}
+data.frame(N = N, Visit = Y) |> head()
+```
+
+As we saw before, we can use the `Y_max` to fit the naive count model,
+but instead of the `plogis()` function, we use `log()` as the inverse of the
+logarithmic link used for Poisson GLM:
+
+```{r}
+Y_max <- apply(Y, 1, max)
+m4 <- glm(Y_max ~ 1, family = poisson)
+coef(m4)
+exp(coef(m4))
+```
+
+With enough visits, tha `Y_max` will approach the  latent variable `N`:
+
+```{r}
+#| eval: false
+N2 <- rpois(n = n2, lambda = lambda.true)
+Tvals <- c(1, 2, 4, 8, 10, 15, 20, 30, 40, 50)
+
+data.frame(
+    T = Tvals,
+    Y_max = sapply(Tvals, \(T) {
+        mean(apply(
+            replicate(T, rbinom(n = n, size = N, prob = p.true)),
+            1, max
+        ))
+    })
+) |> ggplot(aes(x = T, y = Y_max)) +
+    geom_hline(yintercept = lambda.true, lty = 2, col = 2) +
+    geom_hline(yintercept = mean(N), lty = 2, col = 4) +
+    geom_line() +
+    ylim(0, NA) +
+    scale_x_continuous(breaks = Tvals) +
+    theme_light()
+```
+
+
+## Fitting N-mixture models
+
+Fit the multiple-visit count model, the so called N-mixture model,
+using the `pcount()` function of the unmarked R package.
+
+The `unmarked::unmarkedFramePCount()` function is used to organize
+the count data:
+
+```{r}
 library(unmarked)
 
 umf <- unmarked::unmarkedFramePCount(y = Y)
 summary(umf)
 
-fm1 <- unmarked::pcount(~1 ~ 1, umf, K = 50)
-fm1
+m5 <- unmarked::pcount(~1 ~ 1, umf, K = 50)
+m5
 
-plogis(coef(fm1, type = "det"))
-exp(coef(fm1, type = "state"))
+plogis(coef(m5, type = "det"))
+exp(coef(m5, type = "state"))
+```
 
+::: {.callout-caution collapse="true"}
+## References
 
-L_fun <- function(Y, p, lambda, K = 50) {
+Royle, 2004.
+N-mixture models for estimating population size from spatially replicated counts.
+Biometrics, 60:108--115.
+[Fulltext](https://ecology.ghislainv.fr/publications/biblio/Royle2004-Biometrics.pdf),
+DOI 10.1111/j.0006-341X.2004.00142.x
+:::
+
+The `K` argument of the `pcount()` function is the upper index of integration 
+for N-mixture. This will make more sense once we take a look at the
+likelihood function in the next section.
+
+## N-mixture likelihood
+
+The likelihood function for the N-mixture model can be written as:
+
+$$
+L(p, \lambda; y_{1,1}, \ldots, y_{n,T}) = 
+\prod^{n}_{i=1}
+\sum^{K}_{N_{i}=Y_{max,i}}
+\prod^{T}_{t=1}
+e^{-\lambda_{i}}\frac{\lambda_{i}^{N_{i}}}{N_{i}!}\left(\begin{array}{c}
+N_{i}\\
+Y_{it}
+\end{array}\right)
+p^{Y_{it}} (1-p)^{N_{i}-Y_{it}}
+$$
+
+This distribution is a mixture of Poisson and Binomial distributions.
+
+The $K$ value strictly speaking should be $\infty$, but the estimates
+won't change much as long as $K$ is large enough relative to the maximum of
+$N_i$. Of course for real data we do not know what the values of $N_i$ are.
+The numerical integration (summation) for site $i$ goes
+from $Y_{max,i}$ (`Y_max`) to $K$, because we know that $Y_{it} \le N_i$.
+
+We can write this as a log likelihood function:
+
+```{r}
+logL_fun_pcount <- function(Y, p, lambda, K = 50) {
     n <- nrow(Y)
     T <- ncol(Y)
     L <- rep(NA, n)
-    ymax <- apply(Y, 1, max)
+    Y_max <- apply(Y, 1, max)
     for (i in 1:n) {
         S <- 0
-        for (Nit in ymax[i]:K) {
+        for (Nit in Y_max[i]:K) {
             v <- 0
             for (j in 1:T) {
                 v <- v + dbinom(Y[i, j], Nit, p, log = TRUE) +
@@ -506,25 +614,53 @@ L_fun <- function(Y, p, lambda, K = 50) {
     }
     sum(log(L))
 }
-L_fun(Y = Y, p = p.true, lambda = lambda.true)
+```
 
+```{r}
+# n <- 200
+# N <- rpois(n = n, lambda = lambda.true)
+# T <- 1
+# Y <- replicate(T, rbinom(n = n, size = N, prob = p.true))
+
+g <- 20
 grid <- expand.grid(
-    p = seq(0, 1, by = 0.1),
-    lambda = seq(0, lambda.true * 2, by = lambda.true / 10),
-    L = NA
+    p = seq(0, 1, length.out = g),
+    lambda = seq(0, lambda.true * 2, length.out = g),
+    logL = NA
 )
 for (i in 1:nrow(grid)) {
-    grid$L[i] <- L_fun(Y = Y, p = grid$p[i], lambda = grid$lambda[i])
+    grid$logL[i] <- logL_fun_pcount(
+        Y = Y,
+        p = grid$p[i],
+        lambda = grid$lambda[i]
+    )
 }
+```
 
-grid[is.finite(grid$L), ] |> ggplot(aes(x = p, y = lambda, z = L)) +
-    geom_contour_filled() +
+The images showing the likelihood surface:
+
+```{r}
+image(
+    list(
+        x = unique(grid$p),
+        y = unique(grid$lambda),
+        z = matrix(grid$logL, sqrt(nrow(grid)))
+    ),
+    xlab = "p",
+    ylab = expression(lambda)
+)
+abline(h = lambda.true, v = p.true, col = 1, lwd = 1)
+
+grid[is.finite(grid$logL), ] |> ggplot(aes(x = p, y = lambda, z = logL)) +
+    geom_contour_filled(show.legend = FALSE) +
     geom_hline(yintercept = lambda.true) +
     geom_vline(xintercept = p.true) +
     xlab("p") +
     ylab(expression(lambda)) +
     theme_light()
-
 ```
 
-We'll revisit this 
+::: {.callout-note}
+We will circle back to these plots later, feel free to explore it
+with different settings of $n$, $T$, $p$, and $\lambda$.
+:::
