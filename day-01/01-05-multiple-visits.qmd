@@ -103,7 +103,7 @@ The `rbinom` name refers to the Binomial distribution, which is multiple
 independent Bernoulli trials. This is what the `size` argument refers to,
 i.e. `size = 1` means Bernoulli.
 
-## Simulating occupancy data
+# Simulating occupancy data
 
 Let's see how we can use the Bernoulli distribution and the `rbinom`
 function to simulate occupancy data.
@@ -258,7 +258,6 @@ The maximum over a large number of visits will approach the latent
 variable `W`:
 
 ```{r}
-#| eval: false
 n2 <- 500
 W2 <- rbinom(n = n2, size = 1, prob = phi.true)
 Tvals <- 1:10
@@ -280,7 +279,7 @@ data.frame(
     theme_light()
 ```
 
-## Fitting occupancy models
+# Fitting occupancy models
 
 The unmarked package implements the multiple-visit occupancy model.
 
@@ -452,7 +451,7 @@ summary(N)
 table(N) |> plot(ylab = "Frequency")
 ```
 
-## Observation error for counts
+# Observation error for counts
 
 Here is how we introduce observation error to count data:
 
@@ -473,7 +472,7 @@ Y <- rbinom(n = n, size = N, prob = p.true)
 print(table(N = N, Y = Y), zero.print = ".")
 ```
 
-## Count data with multiple visits
+# Count data with multiple visits
 
 When visiting each site $T$ times, the observed data will be organized in a
 $n$ by $T$ matrix as how we saw it for occupancy:
@@ -511,7 +510,6 @@ exp(coef(m4))
 With enough visits, tha `Y_max` will approach the  latent variable `N`:
 
 ```{r}
-#| eval: false
 N2 <- rpois(n = n2, lambda = lambda.true)
 Tvals <- c(1, 2, 4, 8, 10, 15, 20, 30, 40, 50)
 
@@ -533,7 +531,7 @@ data.frame(
 ```
 
 
-## Fitting N-mixture models
+# Fitting N-mixture models
 
 Fit the multiple-visit count model, the so called N-mixture model,
 using the `pcount()` function of the unmarked R package.
