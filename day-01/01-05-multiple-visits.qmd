@@ -13,9 +13,17 @@ format:
 #| include: false
 # options(width = 53, scipen = 999)
 library(knitr)
-set.seed(0)
-library(dplyr)
-library(ggplot2)
+```
+
+# Preamble
+
+```{r}
+suppressPackageStartupMessages({
+    library(dplyr)
+    library(ggplot2)
+    library(unmarked)
+})
+set.seed(1234)
 ```
 
 # Introduction to simulations
@@ -298,8 +306,6 @@ DOI 10.1890/0012-9658(2002)083[2248:ESORWD]2.0.CO;2
 - the `~1 ~1` formula says that we do not have covariates, just the intercepts
 
 ```{r}
-library(unmarked)
-
 umf <- unmarked::unmarkedFrameOccu(y = Y)
 summary(umf)
 
@@ -391,6 +397,8 @@ grid |> ggplot(aes(x = p, y = phi, z = L)) +
     xlab("p") +
     ylab(expression(phi)) +
     theme_light()
+
+grid[which.max(grid$L), ]
 ```
 
 If the rgl package is installed, we can view the surface in 3D:
@@ -540,8 +548,6 @@ The `unmarked::unmarkedFramePCount()` function is used to organize
 the count data:
 
 ```{r}
-library(unmarked)
-
 umf <- unmarked::unmarkedFramePCount(y = Y)
 summary(umf)
 
@@ -593,11 +599,8 @@ from $Y_{max,i}$ (`Y_max`) to $K$, because we know that $Y_{it} \le N_i$.
 We can write this as a log likelihood function:
 
 ```{r}
-logL_fun_pcount <- function(Y, p, lambda, K = 50) {
-    n <- nrow(Y)
-    T <- ncol(Y)
+logL_fun_pcount_R <- function(Y, p, lambda, n, T, Y_max, K) {
     L <- rep(NA, n)
-    Y_max <- apply(Y, 1, max)
     for (i in 1:n) {
         S <- 0
         for (Nit in Y_max[i]:K) {
@@ -612,27 +615,44 @@ logL_fun_pcount <- function(Y, p, lambda, K = 50) {
     }
     sum(log(L))
 }
+
+# using C code from unmarked - much faster
+logL_fun_pcount_C <- function(Y, p, lambda, n, T, Y_max, K = 50) {
+    nll <- unmarked:::nll_pcount(
+        beta = c(log(lambda), qlogis(p)),
+        n_param = c(1, 1, 0),
+        y = Y,
+        X = matrix(1, n, 1),
+        V = matrix(1, n * T, 1),
+        X_offset = rep(0, n),
+        V_offset = matrix(1, n * T, 1),
+        K = K,
+        Kmin = Y_max,
+        mixture = 1,
+        threads = 1
+    )
+    -nll
+}
 ```
 
 ```{r}
-# n <- 200
-# N <- rpois(n = n, lambda = lambda.true)
-# T <- 1
-# Y <- replicate(T, rbinom(n = n, size = N, prob = p.true))
-
-g <- 20
+g <- 50
 grid <- expand.grid(
     p = seq(0, 1, length.out = g),
     lambda = seq(0, lambda.true * 2, length.out = g),
     logL = NA
 )
+
+logL_fun_pcount <- logL_fun_pcount_C
 for (i in 1:nrow(grid)) {
     grid$logL[i] <- logL_fun_pcount(
         Y = Y,
         p = grid$p[i],
-        lambda = grid$lambda[i]
+        lambda = grid$lambda[i],
+        n = n, T = T, Y_max = Y_max, K = 50
     )
 }
+grid$logL[is.infinite(grid$logL)] <- NA
 ```
 
 The images showing the likelihood surface:
@@ -642,20 +662,21 @@ image(
     list(
         x = unique(grid$p),
         y = unique(grid$lambda),
-        z = matrix(grid$logL, sqrt(nrow(grid)))
+        z = matrix(exp(grid$logL), sqrt(nrow(grid)))
     ),
     xlab = "p",
     ylab = expression(lambda)
 )
 abline(h = lambda.true, v = p.true, col = 1, lwd = 1)
 
-grid[is.finite(grid$logL), ] |> ggplot(aes(x = p, y = lambda, z = logL)) +
+grid |> ggplot(aes(x = p, y = lambda, z = exp(logL))) +
     geom_contour_filled(show.legend = FALSE) +
     geom_hline(yintercept = lambda.true) +
     geom_vline(xintercept = p.true) +
     xlab("p") +
     ylab(expression(lambda)) +
     theme_light()
+grid[which.max(grid$logL), ]
 ```
 
 ::: {.callout-note}
