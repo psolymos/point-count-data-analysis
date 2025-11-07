@@ -5,15 +5,16 @@ library(ggplot2)
 
 SEED <- 0
 TITLE <- "Multiple-visits"
+K <- 50
 L_fun_occu <- function(Y, p, phi, ydot, T) {
     L <- prod(
         phi *
             (choose(T, ydot) * p^ydot * (1 - p)^(T - ydot)) +
             (1 - phi) * (ydot == 0)
     )
-    L
+    log(L)
 }
-L_fun_pcount <- function(Y, p, lambda, n, T, Y_max, K = 50) {
+logL_fun_pcount_C <- function(Y, p, lambda, n, T, Y_max, K = 50) {
     nll <- unmarked:::nll_pcount(
         beta = c(log(lambda), qlogis(p)),
         n_param = c(1, 1, 0),
@@ -27,7 +28,24 @@ L_fun_pcount <- function(Y, p, lambda, n, T, Y_max, K = 50) {
         mixture = 1,
         threads = 1
     )
-    exp(-nll)
+    -nll
+}
+logL_fun_pcount_R <- function(Y, p, lambda, n, T, Y_max, K = 50) {
+    L <- rep(NA, n)
+    for (i in 1:n) {
+        S <- 0
+        for (Nit in Y_max[i]:K) {
+            v <- 0
+            for (j in 1:T) {
+                v <- v +
+                    dbinom(Y[i, j], Nit, p, log = TRUE) +
+                    dpois(Nit, lambda, log = TRUE)
+            }
+            S <- S + exp(v)
+        }
+        L[i] <- S
+    }
+    sum(log(L))
 }
 
 ui <- navbarPage(
@@ -68,6 +86,19 @@ ui <- navbarPage(
                 5,
                 1
             ),
+            sliderInput(
+                "g1",
+                "Grid resolution",
+                10,
+                100,
+                100,
+                1
+            ),
+            radioButtons(
+                "log1",
+                "Likelihood scale",
+                c("Likelihood", "log Likelihood")
+            ),
             actionButton("seed", "Change random seed")
         ),
         column(8, plotOutput("surface"), reactableOutput("estimates"))
@@ -107,6 +138,20 @@ ui <- navbarPage(
                 10,
                 5,
                 1
+            ),
+            sliderInput(
+                "g2",
+                "Grid resolution",
+                10,
+                100,
+                25,
+                1
+            ),
+            radioButtons("fast2", "Use R or C code", c("R code", "C code")),
+            radioButtons(
+                "log2",
+                "Likelihood scale",
+                c("Likelihood", "log Likelihood")
             ),
             actionButton("seed2", "Change random seed")
         ),
@@ -152,28 +197,34 @@ server <- function(input, output, session) {
             p = plogis(coef(mod, type = "det"))
         )
     })
-    g <- 100
-    grid <- expand.grid(
-        p = seq(0, 1, length.out = g),
-        phi = seq(0, 1, length.out = g)
-    )
-    L <- reactive({
-        L <- numeric(nrow(grid))
-        for (i in seq_along(L)) {
-            L[i] <- L_fun_occu(
+    grid <- reactive({
+        expand.grid(
+            p = seq(0, 1, length.out = input$g1),
+            phi = seq(0, 1, length.out = input$g1)
+        )
+    })
+    L1 <- reactive({
+        gr <- grid()
+        logL <- numeric(nrow(gr))
+        for (i in seq_along(logL)) {
+            logL[i] <- L_fun_occu(
                 Y = Y(),
-                p = grid$p[i],
-                phi = grid$phi[i],
+                p = gr$p[i],
+                phi = gr$phi[i],
                 ydot = rowSums(Y()),
                 T = input$n_visits
             )
         }
-        L / max(L)
+        gr$L <- logL - max(logL)
+        print(gr[which.max(gr$L), ])
+        gr
     })
     output$surface <- renderPlot({
-        gd <- data.frame(grid, L = L())
-        print(gd[which.max(gd$L), ])
-        ggplot(data = gd, mapping = aes(x = p, y = phi, z = L)) +
+        gr <- L1()
+        if (input$log1 == "Likelihood") {
+            gr$L <- exp(gr$L)
+        }
+        ggplot(data = gr, mapping = aes(x = p, y = phi, z = L)) +
             geom_contour_filled(show.legend = FALSE) +
             geom_hline(yintercept = input$phi_true, col = 2) +
             geom_vline(xintercept = input$p_true, col = 2) +
@@ -233,33 +284,45 @@ server <- function(input, output, session) {
             p = plogis(coef(mod, type = "det"))
         )
     })
-    g2 <- 50
-    grid2 <- expand.grid(
-        p = seq(0, 1, length.out = g2),
-        lambda = seq(0, 2, length.out = g2)
-    )
+    grid2 <- reactive({
+        expand.grid(
+            p = seq(0, 1, length.out = input$g2),
+            lambda = seq(0, 2 * input$lam_true, length.out = input$g2)
+        )
+    })
     L2 <- reactive({
-        L <- numeric(nrow(grid2))
-        gr <- grid2
-        gr$lambda <- gr$lambda * input$lam_true
-        for (i in seq_along(L)) {
-            L[i] <- L_fun_pcount(
-                Y = Y2(),
-                p = gr$p[i],
-                lambda = gr$lambda[i],
-                n = input$n_sites2,
-                T = input$n_visits2,
-                Y_max = Y_max2()
-            )
+        if (input$fast2 == "R code") {
+            logL_fun_pcount <- logL_fun_pcount_R
+        } else {
+            logL_fun_pcount <- logL_fun_pcount_C
         }
-        L / max(L)
+        gr <- grid2()
+        L <- numeric(nrow(gr))
+        withProgress(message = "Calculation in progress ...", max = length(L), {
+            for (i in seq_along(L)) {
+                setProgress(i)
+                L[i] <- logL_fun_pcount(
+                    Y = Y2(),
+                    p = gr$p[i],
+                    lambda = gr$lambda[i],
+                    n = input$n_sites2,
+                    T = input$n_visits2,
+                    Y_max = Y_max2(),
+                    K = K
+                )
+            }
+        })
+        L[is.infinite(L)] <- NA
+        gr$L <- L - max(L, na.rm = TRUE)
+        print(gr[which.max(gr$L), ])
+        gr
     })
     output$surface2 <- renderPlot({
-        gd <- grid2
-        gd$lambda <- gd$lambda * input$lam_true
-        gd$L <- L2()
-        print(gd[which.max(gd$L), ])
-        ggplot(data = gd, mapping = aes(x = p, y = lambda, z = L)) +
+        gr <- L2()
+        if (input$log2 == "Likelihood") {
+            gr$L <- exp(gr$L)
+        }
+        ggplot(data = gr, mapping = aes(x = p, y = lambda, z = L)) +
             geom_contour_filled(show.legend = FALSE) +
             geom_hline(yintercept = input$lam_true, col = 2) +
             geom_vline(xintercept = input$p_true2, col = 2) +
