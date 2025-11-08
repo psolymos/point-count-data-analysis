@@ -1,5 +1,6 @@
 ---
 title: "Multiple-visit occupancy and N-mixture models"
+subtitle: "Point count data analysis workshop 2025"
 date: "`r Sys.Date()`"
 author: "Péter Sólymos"
 toc: true
