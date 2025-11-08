@@ -4,6 +4,7 @@ subtitle: "Point count data analysis workshop 2025"
 date: "`r Sys.Date()`"
 author: "Péter Sólymos"
 format:
+  pdf: default
   revealjs:
     smaller: false
     theme: default
