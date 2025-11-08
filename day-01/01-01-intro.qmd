@@ -1,0 +1,123 @@
+---
+title: "Introduction and background"
+subtitle: "Point count data analysis workshop 2025"
+date: "`r Sys.Date()`"
+author: "Péter Sólymos"
+format:
+  revealjs:
+    smaller: true
+    theme: default
+    slide-number: true
+    preview-links: auto
+    embed-resources: true
+    self-contained-math: true
+---
+
+```{r}
+#| include: false
+library(knitr)
+```
+
+# Housekeeping
+
+- Camera on optional
+- Go for a break as needed (2 breaks/session)
+- Stretch
+
+# Questions
+
+- Live
+- In the chat
+- Or <https://hackmd.io/@psolymos/APCD01>
+
+# Course materials
+
+- Short URL: [a8m.io/pc](https://a8m.io/pc/)
+- `git clone https://github.com/psolymos/point-count-data-analysis.git`
+- Download zip file from GitHub
+
+# About the instructor
+
+- **Péter Sólymos**
+- Senior Data Scientist @ E Source
+- Adjunct Professor @ Univ. Alberta
+- Living in Edmonton, Alberta, Canada, Treaty 6 territory
+- R programmer (vegan, detect, ResourceSelection, pbapply)
+- [peter.solymos.org](https://peter.solymos.org)
+
+# What you will learn
+
+- Understand basic statistical concepts related to detection error
+- Work with field collected data and data from automated recording units (ARU)
+- Know packages such as unmarked, detect, bSims
+- Critically evaluate modelling options and assumptions using simulations
+- Fit N-mixture, distance sampling, and time-removal models to data
+
+# In short
+
+1. How to analyze your point count data when
+2. How to violate assumptions and get away with it
+
+# Day 1: Laying the groundwork
+
+- Introduction and background [30 min]
+- Review of field sampling techniques [30 min]
+- BREAK [15 min]
+- Overview of regression techniques [90 min]
+- BREAK [15 min]
+- Naïve estimates of occupancy and abundance [30 min]
+- Multiple visits and N-mixture models [30 min]
+
+# Day 2: Understanding mechanisms
+
+- Introduction to agent-based simulations [30 min]
+- Bird behavior [30 min]
+- BREAK [15 min]
+- Time-removal models [30 min]
+- Observation process [30 min]
+- BREAK [15 min]
+- Distance sampling [30 min]
+- Combining removal and distance sampling (QPAD) [30 min]
+- Conducting simulation experiments [30 min]
+
+# Day 3: Advanced topics
+
+- Single visit-based approaches (N-mixture and SQPAD) [60 min]
+- BREAK [15 min]
+- Dealing with roadside and other biases [60 min]
+- BREAK [15 min]
+- Analyzing data from recording units [30 min]
+- Multi-species models and using species traits and phylogeny [30 min]
+- Closing remarks & Q&A [30 min]
+
+# Prerequisites
+
+A basic understanding of statistical, mathematical and physical concepts.
+Specifically, generalised linear regression models, including mixed models; 
+basic knowledge of calculus.
+
+Familiarity with R, ability to import/export data, manipulate data frames, fit basic statistical
+models (up to GLM) and generate simple exploratory and diagnostic plots.
+
+Free resources to brush up your knowledge:
+
+- [R Programming for Data Science](https://bookdown.org/rdpeng/rprogdatascience/)
+- [Hands-On Programming with R](https://rstudio-education.github.io/hopr/)
+- [OpenIntro Statistics](https://www.openintro.org/book/os/)
+- [Statistical Inference via Data Science: A ModernDive into R and the Tidyverse](https://moderndive.com/)
+- [Beyond Multiple Linear Regression: Applied Generalized Linear Models and Multilevel Models in R](https://bookdown.org/roback/bookdown-BeyondMLR/)
+
+# Setup instructions
+
+See Day 0 on GitHub:
+
+- [Install R](https://cran.r-project.org/)
+- [Install RStudio IDE](https://posit.co/download/rstudio-desktop/) (feel free to use your favorite IDE)
+
+Install required packages with the
+[`install.R`](./install.R) script:
+
+```R
+source(paste0("https://raw.githubusercontent.com/",
+    "psolymos/point-count-data-analysis/refs/heads/main/day-00/install.R"))
+```
