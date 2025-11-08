@@ -1,9 +1,4 @@
-# # Render Rmd files
-# fl <- list.files(".", recursive=TRUE)
-# fl <- fl[grep("\\.Rmd$", fl)]
-# for (i in fl) {
-#     rmarkdown::render(i)
-# }
+# Rscript --vanilla make.R
 
 # Render qmd files
 fl <- list.files(".", recursive = TRUE)
