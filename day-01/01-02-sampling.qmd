@@ -5,6 +5,7 @@ date: "`r Sys.Date()`"
 author: "Péter Sólymos"
 toc: true
 format:
+  pdf: default
   html: 
     html-math-method: katex
     self-contained: true
@@ -15,4 +16,277 @@ format:
 library(knitr)
 ```
 
-AAA
+# Preamble
+
+```{r}
+suppressPackageStartupMessages({
+    library(dplyr)
+    library(ggplot2)
+    library(unmarked)
+    library(mefa4)
+    library(detect)
+})
+```
+
+# Species data
+
+Data from Mahon et al. 2016 and Mahon et al. 2019.
+
+Mahon, C. L., Holloway, G., Solymos, P., Cumming, S. G., Bayne, E. M., Schmiegelow, F. K. A., Song, S. J., 2016. Community structure and niche characteristics of upland and lowland western boreal birds at multiple spatial scales Forest Ecology and Management 361:99-116. <https://doi.org/10.1016/j.foreco.2015.11.007>
+
+Mahon, C. L., Holloway, G., Bayne, E. M., Toms, J. D., 2019. Additive and interactive cumulative effects on boreal landbirds: winners and losers in a multi-stressor landscape Ecological Applications 29:e01895. <https://doi.org/10.1002/eap.1895>
+
+```{r}
+d <- detect::josm$counts |>
+    mutate(Behav = DetectType1, Count = 1) |>
+    select(SiteID, SpeciesID, Count, Behav, Dur, Dis) |>
+    arrange(SiteID, SpeciesID, Dur, Dis)
+rownames(d) <- NULL
+```
+
+Point count data is usually organized in long format with the following information:
+
+- the ID of the site or survey visit (we use `SiteID` because only 1 station and visit was done at each site)
+- the species code (4 letters)
+- the count (in this case each row is a distinct individual)
+- the behavior code (C=call, S=song, V=visual)
+- the time interval when the individual was first detected
+- the distance interval in which the individual was first detected
+
+```{r}
+summary(d)
+str(d)
+
+d |> filter(SiteID == "CL10118", SpeciesID == "OVEN")
+```
+
+We can work with a single species or multiple species.
+Notice that `SiteID`, `SpeciesID`, etc. are coded as factors.
+This allows us to keep all the `SiteID` even after subsetting.
+If we keep these columns as plain character, we have to remember
+that there are no null records, i.e. sites where the species was not detected.
+The long format only contains information about detections.
+
+If for some reason, no individuals of any species were detected at a site,
+we would add a `"NONE"` placeholder for the `SpeciesID`.
+
+## Point count duration
+
+Each point-count in this data set has a total duration of 10 minutes,
+and 3 time intervals: 0--3, 3--5, and 5--10 minutes.
+
+We used the `table()` function to tabulate the frequency of counts (rows)
+by time interval.
+
+```{r}
+100 * table(d$Dur) / nrow(d)
+```
+
+This is similar to `tally()`:
+
+
+```{r}
+d |>
+    group_by(Dur) |>
+    tally() |>
+    mutate(
+        Perc = n / sum(n)
+    ) |>
+    ggplot(aes(x = Dur, y = Perc)) +
+    geom_bar(stat = "identity") +
+    xlab("Duration [min]") +
+    ylab("% of counts") +
+    theme_light()
+```
+
+We see most of the counts in the first 3 minutes,
+least of the counts in the next 2 minutes, and the rest th the second half
+of the total 10 minutes duration. These counts represent new individuals.
+
+We can also plot this as a cumulative percentage:
+
+```{r}
+data.frame(
+    Dur = c(0, 3, 5, 10),
+    Cumul = c(0, 100 * cumsum(table(Dur = d$Dur) / nrow(d)))
+) |>
+    ggplot(aes(x = Dur, y = Cumul)) +
+    # geom_bar(stat = "identity") +
+    geom_area(alpha = 0.25) +
+    geom_line() +
+    xlab("Duration [min]") +
+    ylab("Cumulative % of counts") +
+    theme_light()
+```
+
+## Point count radius
+
+The data set includes 3 distance bands:
+
+- 0--50 m
+- 50--100 m
+- >100 m
+
+This is a so called unlimited distance count, that is quite common.
+
+When the individuals are counted to an unknown distance (infinity),
+It is hard to define the survey area. We'll show some ways of estimating it later.
+
+Sometimes a 400 m limit is assumed as the maximum distance from which
+cues can be heard, which is why BBS stations are 800 m (half mile) apart.
+
+For truncated radius counts, the maximum distance within which the individuals
+are detected, the area is known. E.g. if we use the 0--50 m circle,
+the area is $A = (50 m)^2 * \pi$. For the first 2 distance bands combined,
+$A = (100 m)^2 * \pi$.
+
+```{r}
+100 * table(d$Dis) / nrow(d)
+```
+
+Most of the counts were in the 0--50 m bin, but almost equal frequency was
+counted in the 50--100 m bin, which is only 3 times larger area.
+The smallest portion is outside of the 100 m distance.
+
+```{r}
+d |>
+    group_by(Dis) |>
+    tally() |>
+    mutate(Perc = n / sum(n)) |>
+    ggplot(aes(x = Dis, y = Perc)) +
+    geom_bar(stat = "identity") +
+    xlab("Distance [m]") +
+    ylab("% of counts") +
+    theme_light()
+```
+
+We can also tabulate both the distance and duration bins:
+
+```{r}
+100 * round(table(Dis = d$Dis, Dur = d$Dur) / nrow(d), 3) |>
+    addmargins()
+```
+
+## Working with a single species
+
+Working with subsets of the data frame using Tidyverse functions can be
+misleading because non-detections are not explicitly stored.
+
+```{r}
+y1 <- d |>
+    filter(SpeciesID == "OVEN") |>
+    group_by(SiteID) |>
+    summarize(y = n())
+dim(y1)
+```
+
+Better to use functions that keep site ID's for non-detections.
+For example the `Xtab()` function from the mefa4 package.
+
+```{r}
+y2 <- mefa4::Xtab(Count ~ SiteID + SpeciesID, d)[, "OVEN", drop = FALSE]
+dim(y2)
+```
+
+Let's see the total counts by distance and duration intervals:
+
+```{r}
+y3 <- mefa4::Xtab(Count ~ Dis + Dur, d, subset = d$SpeciesID == "OVEN")
+100 * y3 / sum(y3)
+```
+
+It is also possible to tabulate counts in a 3-way fashion, e.g.
+calculate the distance x duration combinations for each site.
+The first 2 dimensions will be treated as rows and columns of matrices.
+The 3rd dimension is used is used to form a named list.
+
+```{r}
+y4 <- mefa4::Xtab(Count ~ Dis + Dur + SiteID, d, subset = d$SpeciesID == "OVEN")
+y4[1:2]
+```
+
+Slightly more useful (and faster) to use site IDs as the 1st dimension, though:
+
+```{r}
+y5 <- mefa4::Xtab(Count ~ SiteID + Dis + Dur, d, subset = d$SpeciesID == "OVEN")
+lapply(y5, head, 2)
+```
+
+We can calculate different sums:
+
+```{r}
+# 3min 50m
+table(y5[["0-3min"]][, "0-50m"])
+
+# 5min 100m
+table(rowSums(y5[["0-3min"]][, 1:2]) + rowSums(y5[["3-5min"]][, 1:2]))
+
+# 10min Inf
+table(rowSums(y5[[1]]) + rowSums(y5[[2]]) + rowSums(y5[[3]]))
+```
+
+## Working with multiple species
+
+To get usable species data, we need to pivot the data.
+The crosstabulation uses sparse matrices (0's are not stored),
+which leads to smaller memory footprint and increased speed.
+This approach exploits the fact that fill rate (proportion of non-zero values)
+of bird count data is pretty low (~5% in this case).
+
+
+```{r}
+ytot <- mefa4::Xtab(Count ~ SiteID + SpeciesID, d)
+
+head(ytot[, 1:10])
+
+mean(ytot > 0)
+```
+
+A sparse matrix can be converted to ordinary matrix
+
+```{r}
+head(as.matrix(ytot)[, 1:10])
+```
+
+Check if counts are as expected:
+
+```{r}
+max(ytot) # this is interesting
+rev(sort(apply(as.matrix(ytot), 2, max)))[1:10] # it is CAGO
+
+## flyover (FO) flock (FL) beyond 100m distance
+detect::josm$counts |>
+    filter(
+        SiteID == rownames(ytot)[which(ytot[, "CAGO"] == 200)],
+        SpeciesID == "CAGO"
+    ) |>
+    head(2)
+```
+
+The nice thing about this cross tabulation is that we can filter the records 
+without changing the structure (rows, columns) of the table:
+
+```{r}
+ytot_seen <- Xtab(Count ~ SiteID + SpeciesID, d, subset = d$Behav == "V")
+ytot_heard <- Xtab(Count ~ SiteID + SpeciesID, d, subset = d$Behav != "V")
+```
+
+We see that the species that are detected only via visual cues are
+rare, mostly raptors and waterfowls:
+
+```{r}
+ph <- data.frame(
+    PercentSites = 100 * colSums(ytot > 0) / nrow(ytot),
+    PercentHeard = 100 * colSums(ytot_heard) / colSums(ytot),
+    SpeciesID = colnames(ytot)
+) |>
+    arrange(PercentHeard) |>
+    left_join(detect::josm$species, by = join_by(SpeciesID))
+
+head(ph)
+
+ph |>
+    ggplot(aes(x = PercentSites, y = PercentHeard)) +
+    geom_point() +
+    theme_light()
+```
