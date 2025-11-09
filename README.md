@@ -83,6 +83,10 @@ generalised linear regression models, including mixed models; basic knowledge of
 Familiarity with R, ability to import/export data, manipulate data frames, fit basic statistical
 models (up to GLM) and generate simple exploratory and diagnostic plots.
 
+## References
+
+See publications listed in the [`papers`](./papers/) folder.
+
 ## License
 
 © 2025 Péter Sólymos

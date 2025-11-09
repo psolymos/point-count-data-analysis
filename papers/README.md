@@ -2,7 +2,7 @@
 
 These papers served as the foundation for the materials presented in the workshop.
 To get a PDF version of these, you can either click the link,
-some are free to access (or you might have an institutional subscription).
+some are open access (or you might have an institutional subscription).
 For other PDF's, please browse [this shared Google Drive folder](https://drive.google.com/folderview?id=0B-q59n6LIwYPflA4aHVydEx5aFY5MUZtdFRvcG11NWNUc3ljOTdsSlFSSHRDdHJVMDEyWXc&usp=sharing)
 (organized by publication year) to find what you are looking for.
 
