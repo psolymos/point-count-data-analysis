@@ -1,0 +1,240 @@
+---
+title: "Overview of regression techniques"
+subtitle: "Point count data analysis workshop 2025"
+date: "`r Sys.Date()`"
+author: "Péter Sólymos"
+toc: true
+format:
+  html: 
+    html-math-method: katex
+    self-contained: true
+---
+
+```{r setup,include=FALSE}
+# options(width = 53, scipen = 999)
+library(knitr)
+```
+
+# Preamble
+
+```{r}
+suppressPackageStartupMessages({
+    library(dplyr)
+    library(ggplot2)
+    library(mefa4)
+    library(detect)
+})
+```
+
+# Covariates
+
+Variables that co-vary with the response variable.
+Also called as independent variables, predictors.
+
+Let's continue with the JOSM data set:
+
+```{r}
+x <- detect::josm$surveys |>
+    select(
+        Longitude,
+        Latitude,
+        WindStart,
+        TSSR,
+        DAY,
+        Open,
+        Water,
+        Decid,
+        OpenWet,
+        Conif,
+        ConifWet,
+        Agr,
+        UrbInd,
+        SoftLin,
+        Roads
+    )
+```
+
+STOP AND EXPLAIN EACH VARIABLE!
+
+## Variable types
+
+WHat type of variables we have? You can use the `str()` function to
+reveal the structure of R objects:
+
+```{r}
+str(x)
+```
+
+We see that these variables are all continuous.
+
+However, `WindStart` has very few distinct values, so we could treat it
+as ordinal (ordered factor):
+
+```{r}
+table(x$WindStart)
+x$WindOrd <- as.ordered(x$WindStart)
+str(x$WindOrd)
+levels(x$WindOrd)
+```
+
+Sometimes variables are binary. In R these can be logical (`TRUE`/`FALSE`)
+or coded as 0/1. Often we make such variables by discretizing other
+continuous or ordinal variables. E.g. We can create a binary wind variable:
+
+```{r}
+x$Wind01 <- ifelse(x$WindStart > 0, 1, 0)
+table(x$WindStart, x$Wind01)
+```
+
+Some categorical variables depend on some kind of classification,
+for example we can cut a continuous variable into bins:
+
+```{r}
+x$DecidCut <- cut(x$Decid, seq(0, 1, 0.2), include.lowest = TRUE)
+table(x$DecidCut)
+boxplot(Decid ~ DecidCut, x)
+```
+
+We can also inspect the land cover proportions that add up to 1 for each row.
+
+```{r}
+## define column names
+cn <- c(
+    "Open", "Water", "Agr", "UrbInd", "SoftLin", "Roads", "Decid",
+    "OpenWet", "Conif", "ConifWet"
+)
+## these sum to 1
+summary(rowSums(x[, cn]))
+```
+
+The `find_max()` function finds the maximum value in each row, the output 
+contains the value and the column where it was found, we can turn that into
+the dominant land cover type encoded in `HAB`:
+
+```{r}
+h <- find_max(x[, cn])
+head(h)
+hist(h$value)
+table(h$index)
+x$HAB <- droplevels(h$index) # drop empty levels
+```
+
+Other types of categorical variables are truly discrete, like observer,
+where there are no underlying continuous data:
+
+```{r}
+table(detect::josm$surveys$ObserverID)
+```
+
+When the number of categories increase and approach the sample size,
+we can consider treating these variables as random effects. E.g. the 
+`SurveyArea` variable that has 271 levels.
+
+## Data exploration
+
+We should inspect each variable that we want to use as a covariate.
+Here are some of the most important functions:
+
+```{r}
+summary(x$Decid) # check mean, range, missing values
+hist(x$Decid) # check skew and outliers
+```
+
+A nice way of getting all of the above nicely formatted is to use the skimr package:
+
+```{r}
+skimr::skim(x)
+```
+
+To explore relationships between variables, make scatter and box plots:
+
+```{r}
+x |> ggplot(aes(x = Decid, y = Conif)) +
+    geom_point()
+x |> ggplot(aes(x = Longitude, y = Latitude)) +
+    geom_point()
+x |> ggplot(aes(x = DAY, y = TSSR)) +
+    geom_point()
+x |> ggplot(aes(x = HAB, y = Decid)) +
+    geom_boxplot()
+```
+
+We can present 3 variables as color scatter or bubble plots:
+
+```{r}
+x |> ggplot(aes(x = Decid, y = ConifWet, col = HAB)) +
+    geom_point()
+```
+
+Multivariate exploration include checking correlations:
+
+```{r}
+round(cor(x[, cn]), 3)
+
+corrplot::corrplot(cor(x[, cn]), "ellipse")
+
+heatmap(as.matrix(x[, cn]))
+```
+
+## Variable transformations
+
+We have see examples of these:
+
+- indicator variables (0/1)
+- discretization (cut)
+
+Other transformations include:
+
+- sqrt: to tame outliers (not suitable for negative values)
+- log: we'll see many use cases later
+- polynomials: nonlinear terms (`x^2`, `x^3`, etc.)
+- centering: keeps the distribution but shifts the mean
+- scaling: keeps the distribution but shifts the range (often used with centering)
+
+## Compound variables
+
+We can reduce correlation by combining variables together when those are additive:
+
+```{r}
+x$FOR <- x$Decid + x$Conif + x$ConifWet
+x$HF <- x$Agr + x$UrbInd + x$Roads + x$SoftLin
+x$WET <- x$OpenWet + x$ConifWet + x$Water
+```
+
+We can reduce colinearity by calculating variables relative to each other,
+like proportions or ratios (watch out for division by 0):
+
+```{r}
+x$pDecid <- ifelse(x$FOR > 0, x$Decid / x$FOR, 0)
+cor(x[, c("FOR", "pDecid")])
+```
+
+We can also merge categories, e.g. based on their similarity:
+
+```{r}
+heatmap(cor(x[, cn]))
+```
+
+# Modeling
+
+Joining species counts and covariates
+
+The response variables (0-inflation, reasons for 0 inflation)
+
+- Count modeling: P, NB, ZIP, ZINB, P-Ln
+- link functions (log, cloglog)
+- GLM, GAM, GLMM, Tree models (ctree, gbm, xgboost)
+- Null model
+- Main effects
+- Interactions
+- AIC/BIC
+- Forward and backward selection
+- Goodness of fit
+- Metrics vs. biological realism
+
+# Prediction
+
+- Inverse link function
+- Fitted values vs predict on new data
+- Marginal and conditional effects
+- Mapping results
