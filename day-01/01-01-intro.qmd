@@ -4,7 +4,6 @@ subtitle: "Point count data analysis workshop 2025"
 date: "`r Sys.Date()`"
 author: "Péter Sólymos"
 format:
-  pdf: default
   revealjs:
     smaller: false
     theme: default
@@ -12,6 +11,7 @@ format:
     preview-links: auto
     embed-resources: true
     self-contained-math: true
+  pdf: default
 ---
 
 ```{r}
@@ -177,6 +177,64 @@ Average across 54 species of boreal songbirds[^1].
 - for a set period of time
 - within a defined distance radius.
 
+## Field sheet examples (1)
+
+![Species and location](./images/ralph-01.png)
+
+## Field sheet examples (2)
+
+![Movement and sex](./images/ralph-02.png)
+
+## Field sheet examples (3)
+
+![Distance and time intervals](./images/ralph-03.png)
+
+## Selection of points
+
+- Distance of points from each other (independence, overlap)
+- Placed along a line or in a grid
+- Random placement vs. center of homogenous patch
+- "Pure" patches vs. "contamination"
+  - Forest edges
+  - Roadsides
+  - Small (<100 m) disturbances
+
+## Survey effort
+
+- Usually between 1--20 minutes long
+  - Can be subdivided, e.g. 5 min intervals
+- Truncated distance (0--100 m, 0--150 m) or unlimited radius
+  - Distance bands: 0--50, 50--100, >100 m, etc.
+  - Can measure individual distances
+
+## Observers
+
+- Single observer
+- Multiple observer
+- 1 observer + recording
+- Only recording (preprogrammed)
+
+## Behavior
+
+Responding to:
+
+- Presence of the oserver
+- Presence of conspecifics
+- Presence of other species
+
+Attraction, avoidance, change in frequency of signalling.
+
+## Assumptions
+
+- Birds do not move during the count period
+- Detectability is 100% at the observer (0 distance)
+- Distance is measured without error
+- Species are correctly identified
+- Individuals are tracked, no double counting
+- Birds behave independently of one another
+- Birds do not respond to the observer
+- Habitat or study design do not interact with the above assumptions
+
 ## Questions we want to answer using point counts
 
 - How many? (Abundance, density, population size)
@@ -185,7 +243,7 @@ Average across 54 species of boreal songbirds[^1].
 - How is abundance changing in time? (Trend)
 - What is the effect of a treatment on (relative) abundance?
 
-## Design based standardization
+# Point-count standardization
 
 Have a set of standards/recommendations that people will follow to
 
