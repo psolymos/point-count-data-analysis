@@ -117,6 +117,7 @@ head(h)
 hist(h$value)
 table(h$index)
 x$HAB <- droplevels(h$index) # drop empty levels
+x$DEC <- ifelse(x$HAB == "Decid", 1, 0)
 ```
 
 Other types of categorical variables are truly discrete, like observer,
@@ -217,24 +218,452 @@ heatmap(cor(x[, cn]))
 
 # Modeling
 
-Joining species counts and covariates
+We have manipulated the covariates and the species counts. Let's put them together
+in the same data frame.
 
-The response variables (0-inflation, reasons for 0 inflation)
+```{r}
+spp <- "OVEN" # change here if you want to use another species
+detect::josm$species[spp, ]
 
-- Count modeling: P, NB, ZIP, ZINB, P-Ln
-- link functions (log, cloglog)
-- GLM, GAM, GLMM, Tree models (ctree, gbm, xgboost)
-- Null model
-- Main effects
-- Interactions
-- AIC/BIC
-- Forward and backward selection
-- Goodness of fit
-- Metrics vs. biological realism
+y <- mefa4::Xtab(~ SiteID + SpeciesID, detect::josm$counts)[, spp, drop = FALSE]
+x$Count <- y[rownames(x), ]
+```
 
-# Prediction
+Let's check for missing values:
 
-- Inverse link function
-- Fitted values vs predict on new data
-- Marginal and conditional effects
-- Mapping results
+```{r}
+data.frame(missing = colSums(is.na(x))) |> filter(missing > 0)
+```
+
+There are only 2 rows with missing values, we could use
+`na.omit(x)` to drop these, or we can impute the values:
+
+- pick a value randomly
+- use the mean
+- use the most common value (mode)
+- Use other variables to predict the possible value
+
+After inspecting the full data set, it turns out that site FT21204W
+experiences wind according to `WindEnd`:
+
+```{r}
+sites <- rownames(x)[is.na(x$WindStart)]
+detect::josm$surveys[detect::josm$surveys$SiteID %in% c("FT07424", "FT21204W"), ]
+```
+
+Let's set the value to 3 for site FT21204W, and the mode (0) for site FT07424:
+```{r}
+x[sites, "WindStart"] <- c(0, 3)
+x[sites, "WindOrd"] <- c("0", "3")
+x[sites, "Wind01"] <- c(0, 1)
+```
+
+Any more `NA`s left?
+
+```{r}
+any(is.na(x))
+```
+
+Let's inspect the response variable:
+
+```{r}
+table(x$Count)
+```
+
+The distribution looks somewhat 0 inflated. What are the possible reasons for that?
+
+- conditions lead to the absence of the species
+- detected counts are lower than the actual counts
+
+The types of models used most often to model count data and the functions used to fit them:
+
+- Poisson: `stats::glm()`
+- Negative Binomial (higher or lower variance than Poisson): `MASS::glm.nb()`
+- Zero-inflated Poisson (ZIP): `pscl::zeroinfl()`
+- Zero-inflated Negative Binomial (ZINB): : `pscl::zeroinfl()`
+
+Other approaches include additive models (`mgcv::gam()`) and
+tree based methods (see the gbm and xgboost packages).
+
+Let us start with the Poisson model.
+
+## Poisson null model
+
+The null model states that the expected values of the count at all locations 
+are identical: $E[Y_i]=\lambda$ ($i=1,...,n$), where $Y_i$ is a random variable 
+that follows a Poisson distribution with mean $\lambda$: 
+$(Y_i \mid \lambda) \sim Poisson(\lambda)$. The observation ($y_i$) is a 
+realization of the random variables $Y$ at site $i$, these observations are 
+independent and identically distributed (i.i.d.), and we have $n$ observations in total.
+
+Saying the the distribution is Poisson is an assumption in itself. 
+For example we assume that the variance equals the mean ($V(\mu)=\mu$).
+
+```{r}
+mP0 <- glm(Count ~ 1, data = x, family = poisson)
+```
+
+The `family=poisson` specification implicitly assumes that we use a logarithmic 
+link functions, that is to say that $log(\lambda) = \beta_0$, or equivalently: 
+$\lambda = e^{\beta_0}$. The mean of the observations equal the mean of the 
+fitted values, as expected:
+
+```{r}
+mean(mP0$y)
+mean(fitted(mP0))
+exp(coef(mP0))
+```
+
+The logarithmic function is called the link function, its inverse, the 
+exponential function is called the inverse link function. 
+The model family has these conveniently stored for us:
+
+```{r}
+mP0$family
+mP0$family$linkfun
+mP0$family$linkinv
+```
+
+Inspect the summary
+
+```{r}
+summary(mP0)
+```
+
+Notice that the residual deviance much higher than residual degrees of freedom.
+This indicates that our parametric model (Poisson error distribution, 
+constant expected value) is not quite right. See if we can improve that somehow
+and explain more of the variation.
+
+We can pick an error distribution that would fit the residuals around the 
+constant expected value better (i.e. using random effects). But this way we 
+would not learn about what is driving the variation in the counts. 
+We would also have a really hard time predicting abundance of the species for 
+unsurveyed locations. We would be right on average, but we wouldn't be able to 
+tell how abundance varies along e.g. a disturbance gradient or with tree cover.
+
+An alternative approach would be to find predictors that could explain the variation.
+
+## Main effects
+
+We fit a parametric (Poisson) linear model using `Decid` as a predictor:
+
+```{r}
+mP1 <- glm(Count ~ Decid, data = x, family = poisson)
+mean(mP1$y)
+mean(fitted(mP1))
+coef(mP1)
+```
+
+Same as before, the mean of the observations equal the mean of the fitted values. 
+But instead of only the intercept, now we have 2 coefficients estimated. 
+Our linear predictor thus looks like:
+$log(\lambda_i) = \beta_0 + \beta_1 x_{1i}$. 
+This means that expected abundance is
+$e^{\beta_0}$ where `Decid`=0, $e^{\beta_0}e^{\beta_1}$
+where `Decid`=1, and $e^{\beta_0+\beta_1 x_{1}}$ in between.
+
+The relationship can be visualized by plotting the fitted values against the 
+predictor, or using the coefficients to make predictions using our formula:
+
+```{r}
+## make a sequence between 0 and 1
+dec <- seq(from = 0, to = 1, by = 0.01)
+## predict lambda
+lam <- exp(coef(mP1)[1] + coef(mP1)[2] * dec)
+
+plot(fitted(mP1) ~ Decid, x, pch = 19, col = "grey") # fitted
+lines(lam ~ dec, col = 2) # our predicted
+rug(x$Decid) # observed x values
+```
+
+The model summary tells us that residuals are not quite right 
+The residual deviance is still higher than residual degrees of freedom 
+(these should be close if the Poisson assumption holds, but it is much better 
+than what we saw for the null model).
+
+We also learned that the `Decid` effect is significant 
+(meaning that the effect size is large compared to the standard error):
+
+```{r}
+summary(mP1)
+```
+
+Note: we see a significant (<0.05) $P$-value for the intercept as well. 
+It is totally meaningless. That $P$-value relates to the hull hypothesis of the 
+intercept ($\beta_0$) being 0. There is nothing special about that, it is like 
+saying the average abundance is different from 1. 
+
+But when $\beta_1$ is significantly different from 0, 
+it means that the main effect has non-negligible effect on the mean abundance.
+
+We can compare this model to the null (constant, intercept-only) model:
+
+```{r}
+AIC(mP0, mP1)
+BIC(mP0, mP1)
+MuMIn::model.sel(mP0, mP1)
+```
+
+AIC uses the negative log likelihood and the number of parameters as penalty. 
+Smaller value indicate a model that is closer to the (unknowable) true model 
+(caveat: this statement is true only asymptotically, i.e. it holds for large
+sample sizes). For small samples, we often use 
+BIC (more penalty for complex models when sample size is small), or 
+AICc (as in `MuMIn::model.sel()`).
+
+## Non-linear effects
+
+We can use polynomial terms to capture non (log) linear effects:
+
+```{r}
+mP12 <- glm(Count ~ Decid + I(Decid^2), data = x, family = poisson)
+mP13 <- glm(Count ~ Decid + I(Decid^2) + I(Decid^3), data = x, family = poisson)
+mP14 <- glm(Count ~ Decid + I(Decid^2) + I(Decid^3) + I(Decid^4), data = x, family = poisson)
+MuMIn::model.sel(mP0, mP1, mP12, mP13, mP14)
+```
+
+Not a surprise that the most complex model won, we had enough degrees of freedoms to spare. 
+
+```{r}
+xnew <- data.frame(Decid = seq(0, 1, 0.01))
+
+pr <- cbind(
+    predict(mP1, xnew, type = "response"),
+    predict(mP12, xnew, type = "response"),
+    predict(mP13, xnew, type = "response"),
+    predict(mP14, xnew, type = "response")
+)
+matplot(xnew$Decid, pr,
+    lty = 1, type = "l",
+    xlab = "Decid", ylab = "E[Y]"
+)
+legend("topleft",
+    lty = 1, col = 1:4, bty = "n",
+    legend = c("Linear", "Quadratic", "Cubic", "Quartic")
+)
+```
+
+## Categorical variables
+
+Categorical variables are expanded into a _model matrix_ before parameter estimation. 
+The model matrix usually contains indicator variables for each level 
+(value 1 when factor value equals a particular label, 0 otherwise) except for 
+the _reference category_ (check `relevel` if you want to change the reference category).
+
+The estimate for the reference category comes from the intercept, the rest of 
+the estimates are relative to the reference category. In the log-linear model 
+example this means a ratio.
+
+```{r}
+head(model.matrix(~DEC, x))
+mP2 <- glm(Count ~ DEC, data = x, family = poisson)
+summary(mP2)
+coef(mP2)
+```
+
+The estimate for a non-deciduous landscape is $e^{\beta_0}$, and it is 
+$e^{\beta_0}e^{\beta_1}$ for deciduous landscapes. 
+(Of course such binary classification at the landscape (1 km$^2$) level doesn't really makes sense.)
+
+```{r regr-pois_cat1}
+MuMIn::model.sel(mP1, mP2)
+```
+
+Having estimates for each land cover type improves the model,
+but the  model using continuous variable is still better
+
+```{r regr-pois_cat2}
+mP3 <- glm(Count ~ HAB, data = x, family = poisson)
+summary(mP3)
+
+MuMIn::model.sel(mP1, mP2, mP3)
+```
+
+The prediction in this case would look like: 
+$log(\lambda_i)=\beta_0 + \sum_{j=1}^{k-1} \beta_j x_{ji}$, where we have $k$ 
+factor levels (and $k-1$ indicator variables besides the intercept).
+
+Here is a general way of calculating fitted values or making predictions based 
+on the design matrix (`X`) and the coefficients (`b`) (column ordering in `X` 
+must match the elements in `b`) given a parametric log-linear model `object` 
+and data frame `df` (the code won't run as is, `object` is just a placeholder 
+for your GLM model object):
+
+```{r regr-pred_general,eval=FALSE}
+b <- coef(object)
+X <- model.matrix(formula(object), df)
+exp(X %*% b)
+```
+
+## Multiple main effects
+
+
+```{r}
+# mP4 <- glm(Count ~ Decid + ConifWet, data=x, family=poisson)
+mP4 <- update(mP1, ~ . + ConifWet)
+summary(mP4)
+
+MuMIn::model.sel(mP0, mP1, mP4)
+```
+
+Plot multiple main effects:
+
+conditional vs marginal plots - FIXME
+
+```{r}
+ggplot(x, aes(x = Decid, y = ConifWet, col = fitted(mP4))) +
+    geom_point() +
+    theme_light()
+```
+
+
+## Interaction
+
+When we consider interactions between two variables (say $x_1$ and $x_2$), 
+we refer to adding another variable to the model matrix that is a product of 
+the two variables ($x_{12}=x_1 x_2$):
+
+```{r}
+head(model.matrix(~ x1 * x2, data.frame(x1 = 1:4, x2 = 10:7)))
+```
+
+Let's consider interaction between our two predictors from before:
+
+```{r regr-inter}
+mP5 <- glm(Count ~ Decid * ConifWet, data = x, family = poisson)
+summary(mP5)
+MuMIn::model.sel(mP0, mP1, mP4, mP5)
+```
+
+The model with the interaction is best supported, but how do we make sense of 
+this relationship? We can't easily visualize it in a single plot. We can either
+
+1. fix all variables (at their mean/meadian) and see how the response is changing along a single variable: this is called a _conditional_ effect (conditional on fixing other variables), this is what `visreg::visreg()` does
+2. or plot the fitted values against the predictor variable (one at a time), this is called a _marginal_ effect, and this is what `ResourceSelection::mep()` does
+
+```{r regr-visreg2}
+visreg::visreg(mP5, scale = "response", xvar = "ConifWet", by = "Decid")
+```
+
+```{r}
+ggplot(x, aes(x = Decid, y = fitted(mP5), col = ConifWet)) +
+    geom_point() +
+    geom_smooth() +
+    theme_light()
+```
+
+
+Final battle of Poisson models: 
+
+```{r}
+MuMIn::model.sel(mP0, mP1, mP12, mP13, mP14, mP2, mP3, mP4, mP5)
+```
+
+Of course, the most complex model wins but the Chi-square test is still 
+significant (indicating lack of fit). Let's try different error distribution.
+
+## Different error distributions
+
+We will use the 2-variable model with interaction:
+
+```{r}
+mP <- glm(Count ~ Decid * ConifWet, data = x, family = poisson)
+```
+
+Let us try the Negative Binomial distribution first. This distribution is 
+related to Binomial experiments (number of trials required to get a fixed 
+number of successes given a binomial probability). It can also be derived as a 
+mixture of Poisson and Gamma distributions (see [Wikipedia](https://en.wikipedia.org/wiki/Negative_binomial_distribution#Gamma%E2%80%93Poisson_mixture)), which is a kind 
+of hierarchical model. In this case, the Gamma distribution acts as an i.i.d. 
+random effect for the intercept:
+$Y_i\sim Poisson(\lambda_i)$, $\lambda_i  \sim Gamma(e^{\beta_0+\beta_1 x_{1i}}, \gamma)$, 
+where $\gamma$ is the Gamma variance.
+
+The Negative Binomial variance (using the parametrization common in R functions) 
+is a function of the mean and the scale: $V(\mu) = \mu + \mu^2/\theta$.
+
+```{r}
+mNB <- MASS::glm.nb(Count ~ Decid * ConifWet, data = x)
+summary(mNB)
+```
+
+Next, we look at zero-inflated models. In this case, the mixture distribution 
+is a Bernoulli distribution and a count distribution (Poisson or Negative Binomial, 
+for example). The 0's can come from both the zero and the count distributions, 
+whereas the >0 values can only come from the count distribution: 
+$A_i \sim Bernoulli(\varphi)$, $Y_i \sim Poisson(A_i \lambda_i)$.
+
+The zero part of the zero-inflated models are often parametrized as probability 
+of zero ($1-\varphi$), as in the `pscl::zeroinfl` function:
+
+```{r}
+## Zero-inflated Poisson
+mZIP <- pscl::zeroinfl(Count ~ Decid * ConifWet | 1, x, dist = "poisson")
+summary(mZIP)
+
+## Zero-inflated Negative Binomial
+mZINB <- pscl::zeroinfl(Count ~ Decid * ConifWet | 1, x, dist = "negbin")
+summary(mZINB)
+```
+
+Now we compare the four different parametric models:
+
+```{r}
+AIC(mP, mNB, mZIP, mZINB)
+MuMIn::model.sel(mP, mNB, mZIP, mZINB)
+```
+
+Our best model is the ZINB. The probability of observing a zero as part of the 
+zero distribution is back transformed from the zero coefficient using the inverse logit function:
+
+```{r}
+unname(plogis(coef(mZIP, "zero"))) # P of 0 (not 1!)
+```
+
+## Mixed models
+
+It is also common practice to consider generalized linear mixed models (GLMMs) 
+for count data. These mixed models are usually considered as Poisson-Lognormal 
+mixtures. The simplest, so called i.i.d., case is similar to the Negative Binomial, 
+but instead of Gamma, we have Lognormal distribution: 
+$Y_i\sim Poisson(\lambda_i)$, 
+$log(\lambda_i) = \beta_0+\beta_1 x_{1i}+\epsilon_i$, $\epsilon_i \sim Normal(0, \sigma^2)$, 
+where $\sigma^2$ is the Lognormal variance on the log scale.
+
+We can use the `lme4::glmer` function: use `SiteID` as random effect (we have exactly $n$ random effects).
+
+```{r}
+mPLN1 <- lme4::glmer(Count ~ Decid * ConifWet + (1 | SiteID),
+    data = data.frame(SiteID = rownames(x), x), family = poisson
+)
+summary(mPLN1)
+```
+
+Note: the number of unknowns we have to somehow estimate is now more than the 
+number of observations we have. How is that possible?
+
+Alternatively, we can use `SurveyArea` as a grouping variable. We have now 
+$m < n$ random effects, and survey areas can be seen as larger landscapes 
+within which the sites are clustered: $Y_ij\sim Poisson(\lambda_ij)$, 
+$log(\lambda_ij) = \beta_0+\beta_1 x_{1ij}+\epsilon_i$, $\epsilon_i \sim Normal(0, \sigma^2)$. 
+The index $i$ ($i=1,...,m$) defines the cluster (survey area), the 
+$j$ ($j=1,...,n_i$) defines the sites within survey area $i$ ($n = \sum_{i=1}^m n_i$).
+
+```{r}
+mPLN2 <- lme4::glmer(Count ~ Decid * ConifWet + (1 | SurveyArea),
+    data = data.frame(SurveyArea = detect::josm$surveys$SurveyArea, x),
+    family = poisson
+)
+summary(mPLN2)
+```
+
+In the battle of distributions (keeping the linear predictor part the same) 
+the clustered GLMM was best supported:
+
+```{r}
+tmp <- AIC(mP, mNB, mZIP, mZINB, mPLN1, mPLN2)
+tmp$delta_AIC <- tmp$AIC - min(tmp$AIC)
+tmp[order(tmp$AIC), ]
+```
+
