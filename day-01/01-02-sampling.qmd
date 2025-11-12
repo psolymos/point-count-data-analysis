@@ -28,6 +28,8 @@ suppressPackageStartupMessages({
 })
 ```
 
+Will use Decid * ConifWet
+
 # Species data
 
 Data from Mahon et al. 2016 and Mahon et al. 2019.
@@ -290,3 +292,11 @@ ph |>
     geom_point() +
     theme_light()
 ```
+
+The columns in these matrices contain the species counts, and will
+serve as the response variable (also called dependent variable)
+in the models that we fit next.
+
+# Next
+
+_Overview of regression techniques_

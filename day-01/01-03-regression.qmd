@@ -498,27 +498,28 @@ exp(X %*% b)
 
 ## Multiple main effects
 
+We can add main effects by providing a new formula to a new model.
+Or we can use the `update()` function. The `. ~ .` means to keep
+both sides of the formula but add (`+`) or remove (`-`) terms from
+the original scope.
+Note: the `update` function can be used to update any function call,
+not just GLM models.
 
 ```{r}
 # mP4 <- glm(Count ~ Decid + ConifWet, data=x, family=poisson)
-mP4 <- update(mP1, ~ . + ConifWet)
+mP4 <- update(mP1, . ~ . + ConifWet)
 summary(mP4)
 
 MuMIn::model.sel(mP0, mP1, mP4)
 ```
 
-Plot multiple main effects:
+Here are some functions that can automate model selection:
 
-conditional vs marginal plots - FIXME
+- `drop1`: evaluate which variable to drop to lower AIC the most
+- `add1`: evaluate which variable to add to lower AIC the most
+- `step`: perform forward/backward model selection using `add1`/`drop1`
 
-```{r}
-ggplot(x, aes(x = Decid, y = ConifWet, col = fitted(mP4))) +
-    geom_point() +
-    theme_light()
-```
-
-
-## Interaction
+## Interactions
 
 When we consider interactions between two variables (say $x_1$ and $x_2$), 
 we refer to adding another variable to the model matrix that is a product of 
@@ -552,7 +553,6 @@ ggplot(x, aes(x = Decid, y = fitted(mP5), col = ConifWet)) +
     geom_smooth() +
     theme_light()
 ```
-
 
 Final battle of Poisson models: 
 
@@ -667,3 +667,6 @@ tmp$delta_AIC <- tmp$AIC - min(tmp$AIC)
 tmp[order(tmp$AIC), ]
 ```
 
+# Next
+
+_Naïve estimates of occupancy and abundance_

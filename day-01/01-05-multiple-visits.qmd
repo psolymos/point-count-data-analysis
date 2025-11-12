@@ -684,3 +684,9 @@ grid[which.max(grid$logL), ]
 We will circle back to these plots later, feel free to explore it
 with different settings of $n$, $T$, $p$, and $\lambda$.
 :::
+
+# Next
+
+_Introduction to agent-based simulations_
+
+End of Day 1. See you tomorrow!

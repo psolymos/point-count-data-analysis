@@ -1,0 +1,258 @@
+---
+title: "Naïve estimates of occupancy and abundance"
+subtitle: "Point count data analysis workshop 2025"
+date: "`r Sys.Date()`"
+author: "Péter Sólymos"
+toc: true
+format:
+  html: 
+    html-math-method: katex
+    self-contained: true
+---
+
+```{r setup,include=FALSE}
+options(width = 53, scipen = 999)
+library(knitr)
+```
+
+# Preamble
+
+```{r}
+suppressPackageStartupMessages({
+    library(dplyr)
+    library(ggplot2)
+    library(mefa4)
+    library(detect)
+})
+```
+
+# Nuisance variables
+
+Nuisance variables are covariates whose effects we want to control
+but we are not really interested in their effect. We just need to
+estimate them so that we can account for them as best as we can.
+
+We have 3 such covariates in our example:
+
+- `TSSR`: time since local sunrise, (survey time - sunrise time) / 24
+- `DAY`: day of the year, ordinal day / 365
+- `WindStart`: wind speed using [Beaufort scale](https://en.wikipedia.org/wiki/Beaufort_scale)
+
+```{r}
+x <- detect::josm$surveys |>
+    select(
+        Longitude,
+        Latitude,
+        WindStart,
+        TSSR,
+        DAY,
+        Open,
+        Water,
+        Decid,
+        OpenWet,
+        Conif,
+        ConifWet,
+        Agr,
+        UrbInd,
+        SoftLin,
+        Roads
+    )
+x[sites, "WindStart"] <- c(0, 3)
+x[sites, "WindOrd"] <- c("0", "3")
+x[sites, "Wind01"] <- c(0, 1)
+
+spp <- "OVEN" # change here if you want to use another species
+detect::josm$species[spp, ]
+
+y <- mefa4::Xtab(~ SiteID + SpeciesID, detect::josm$counts)[, spp, drop = FALSE]
+x$Count <- y[rownames(x), ]
+```
+
+
+```{r}
+m1 <- glm(Count ~ Decid * ConifWet + TSSR + I(TSSR^2) + DAY + WindStart, data = x, family = poisson)
+summary(m1)
+
+m2 <- step(m1, trace = 0)
+summary(m2)
+
+MuMIn::model.sel(m1, m2)
+```
+
+When predicting abundance and accounting for nuisance variables,
+we want to set the values that maximize the prediction.
+All 3 nuisance variables have a negative effect, so we need to pick the mim:
+
+```{r}
+xnew <- x
+xnew$TSSR <- min(xnew$TSSR)
+xnew$DAY <- min(xnew$DAY)
+xnew$WindStart <- min(xnew$WindStart)
+
+x$Pred <- predict(m2, x, type = "response")
+x$PredNew <- predict(m2, xnew, type = "response")
+mean(x$Pred)
+mean(x$PredNew)
+
+x |> ggplot(aes(x = Decid, y = Pred, col = WindStart)) +
+    geom_point() +
+    theme_light()
+
+x |> ggplot(aes(x = Decid, y = PredNew)) +
+    geom_point() +
+    geom_smooth() +
+    theme_light()
+
+x |> ggplot(aes(x = Pred, y = PredNew, col = WindStart)) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, lty = 2) +
+    theme_light()
+```
+
+## Offsets
+
+Offsets are constant terms in the linear predictor, e.g. 
+$log(\lambda_i) = \beta_0 + \beta_1 x_{1i} + o_i$, where $o_i$ is an offset.
+
+In the survey area case, an offset might be the log of area surveyed. 
+Abundance ($N$) is population density ($D$) multiplied by survey area ($A$). 
+The logic for this is based on point processes: intensity is a linear function 
+of area under a homogeneous Poisson point process. So we can say that 
+$E[Y_i] = N_i = D_i A_i$, thus $log(N_i) = log(D_i) + log(A_i)$ 
+where $o_i = log(A_i)$ is the offset.
+
+The problem is that we do not know the survey area. We used 10 minutes and
+unlimited distance counts.
+
+
+Let's see if using area as offset makes our models comparable. Instead of mixing up different survey types, let's see if we can make them identical. We use distance in meters divided by 100, so the population density is estimated in ha.
+
+## Distance effects
+
+```{r}
+y1 <- mefa4::Xtab(~ SiteID + Dis, detect::josm$counts, subset = detect::josm$counts$SpeciesID == spp)
+head(y1)
+
+x$Count_10min_50m <- y1[rownames(x), "0-50m"]
+x$Count_10min_100m <- y1[rownames(x), "0-50m"] + y1[rownames(x), "50-100m"]
+
+mean(y1[, "0-50m"])
+mean(y1[, "0-50m"] + y1[, "50-100m"])
+
+mean(y1[, "0-50m"]) / (0.5^2 * pi)
+mean(y1[, "0-50m"] + y1[, "50-100m"]) / (1^2 * pi)
+
+x$logA_50m <- log(0.5^2 * pi)
+x$logA_100m <- log(1^2 * pi)
+
+
+m3 <- update(m2, Count_10min_50m ~ . + offset(logA_50m))
+m4 <- update(m2, Count_10min_100m ~ . + offset(logA_100m))
+summary(m3)
+summary(m4)
+
+xnew2 <- xnew
+xnew2$logA_50m <- 0
+xnew2$logA_100m <- 0
+
+xnew2$Pred_10min_50m <- predict(m3, xnew2, type = "response")
+xnew2$Pred_10min_100m <- predict(m4, xnew2, type = "response")
+
+mean(xnew2$Pred_10min_50m)
+mean(xnew2$Pred_10min_100m)
+
+xnew2 |> ggplot(aes(x = Pred_10min_50m, y = Pred_10min_100m)) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, lty = 2) +
+    theme_light()
+# 50 m density higher because detection is higher
+```
+
+## Duration effect
+
+```{r}
+y2 <- mefa4::Xtab(~ SiteID + Dis, detect::josm$counts,
+    subset = detect::josm$counts$SpeciesID == spp &
+        detect::josm$counts$Dur == "0-3min"
+)
+
+x$Count_3min_50m <- y2[rownames(x), "0-50m"]
+x$Count_3min_100m <- y2[rownames(x), "0-50m"] + y2[rownames(x), "50-100m"]
+
+mean(y2[, "0-50m"])
+mean(y2[, "0-50m"] + y2[, "50-100m"])
+
+mean(y2[, "0-50m"]) / (0.5^2 * pi)
+mean(y2[, "0-50m"] + y2[, "50-100m"]) / (1^2 * pi)
+
+m5 <- update(m2, Count_3min_50m ~ . + offset(logA_50m))
+m6 <- update(m2, Count_3min_100m ~ . + offset(logA_100m))
+summary(m5)
+summary(m6)
+
+xnew2$Pred_3min_50m <- predict(m5, xnew2, type = "response")
+xnew2$Pred_3min_100m <- predict(m6, xnew2, type = "response")
+
+
+mean(xnew2$Pred_10min_50m)
+mean(xnew2$Pred_10min_100m)
+mean(xnew2$Pred_3min_50m)
+mean(xnew2$Pred_3min_100m)
+
+xnew2 |> ggplot(aes(x = Pred_3min_50m, y = Pred_3min_100m)) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, lty = 2) +
+    theme_light()
+
+xnew2 |> ggplot(aes(x = Pred_3min_50m, y = Pred_10min_50m)) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, lty = 2) +
+    theme_light()
+
+xnew2 |> ggplot(aes(x = Pred_3min_100m, y = Pred_10min_100m)) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, lty = 2) +
+    theme_light()
+# 50 m density higher because detection is higher
+# 3-min estimates substantially lower
+```
+
+## Accounting for different field protocols
+
+Mix of 3/10min 50/100m
+
+- predict for 10 min and unit area
+
+```{r}
+Methods <- c("3min_50m", "3min_100m", "10min_50m", "10min_100m")
+x$Method <- factor(sample(
+    Methods,
+    nrow(x),
+    replace = TRUE
+), levels = Methods)
+x$Count_Rnd <- 0
+for (i in Methods) {
+    x$Count_Rnd[x$Method == i] <- x[[paste0("Count_", i)]][x$Method == i]
+}
+x$logA_Rnd <- log(ifelse(x$Method %in% c("3min_50m", "10min_50m"), 0.5, 1)^2 * pi)
+
+m7 <- update(m2, Count_Rnd ~ . + Method + offset(logA_Rnd))
+summary(m7)
+# 10min-50m ~0 effect: offset is working
+
+xnew2$logA_Rnd <- 0
+xnew2$Method <- "10min_50m" # highest duration, highest detection
+xnew2$Pred_Rnd <- predict(m7, xnew2, type = "response")
+
+mean(xnew2$Pred_Rnd)
+
+xnew2 |> ggplot(aes(x = Decid, y = Pred_Rnd)) +
+    geom_point() +
+    geom_smooth() +
+    theme_light() +
+    ylab("Naive density [male individuals/ha]")
+```
+
+# Next
+
+_Multiple-visit occupancy and N-mixture models_
