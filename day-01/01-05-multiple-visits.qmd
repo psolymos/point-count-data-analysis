@@ -297,7 +297,7 @@ The unmarked package implements the multiple-visit occupancy model.
 ## References
 
 MacKenzie et al., 2002.
-Estimating site occupancy rates when detection\nprobabilities are less than one.
+Estimating site occupancy rates when detection probabilities are less than one.
 Ecology, 83:2248--2255.
 [Fulltext](https://www.sfu.ca/~lmgonigl/materials-qm/papers/mackenzie-2002-2248.pdf),
 DOI 10.1890/0012-9658(2002)083[2248:ESORWD]2.0.CO;2
