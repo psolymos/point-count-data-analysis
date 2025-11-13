@@ -8,10 +8,11 @@ format:
   html: 
     html-math-method: katex
     self-contained: true
+  pdf: default
 ---
 
-```{r setup,include=FALSE}
-# options(width = 53, scipen = 999)
+```{r}
+#| include: false
 library(knitr)
 ```
 

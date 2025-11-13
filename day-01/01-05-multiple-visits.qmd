@@ -8,6 +8,7 @@ format:
   html: 
     html-math-method: katex
     self-contained: true
+  pdf: default
 ---
 
 ```{r}

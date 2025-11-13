@@ -1,0 +1,26 @@
+---
+title: "Introduction to agent-based simulations"
+subtitle: "Point count data analysis workshop 2025"
+date: "`r Sys.Date()`"
+author: "Péter Sólymos"
+toc: true
+format:
+  html: 
+    html-math-method: katex
+    self-contained: true
+---
+
+```{r}
+#| include: false
+library(knitr)
+```
+
+
+# Counting strategies
+
+When we looked at counts from the same site
+we have seen 2 types of counting strategies with respect to time:
+
+1. We subdivide the total duration of a single visit into time intervals
+   and we only count the new individuals only
+

@@ -5,10 +5,10 @@ date: "`r Sys.Date()`"
 author: "Péter Sólymos"
 toc: true
 format:
-  pdf: default
   html: 
     html-math-method: katex
     self-contained: true
+  pdf: default
 ---
 
 ```{r}

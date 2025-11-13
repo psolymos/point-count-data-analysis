@@ -8,10 +8,11 @@ format:
   html: 
     html-math-method: katex
     self-contained: true
+  pdf: default
 ---
 
-```{r setup,include=FALSE}
-options(width = 53, scipen = 999)
+```{r}
+#| include: false
 library(knitr)
 ```
 
@@ -57,12 +58,9 @@ x <- detect::josm$surveys |>
         SoftLin,
         Roads
     )
-x[sites, "WindStart"] <- c(0, 3)
-x[sites, "WindOrd"] <- c("0", "3")
-x[sites, "Wind01"] <- c(0, 1)
+x[is.na(x$WindStart), "WindStart"] <- c(0, 3)
 
 spp <- "OVEN" # change here if you want to use another species
-detect::josm$species[spp, ]
 
 y <- mefa4::Xtab(~ SiteID + SpeciesID, detect::josm$counts)[, spp, drop = FALSE]
 x$Count <- y[rownames(x), ]
@@ -100,7 +98,6 @@ x |> ggplot(aes(x = Decid, y = Pred, col = WindStart)) +
 
 x |> ggplot(aes(x = Decid, y = PredNew)) +
     geom_point() +
-    geom_smooth() +
     theme_light()
 
 x |> ggplot(aes(x = Pred, y = PredNew, col = WindStart)) +
@@ -129,76 +126,155 @@ Let's see if using area as offset makes our models comparable. Instead of mixing
 
 ## Distance effects
 
+We will inspect what happens if we used different survey radii.
+Our data set has 50 and 100 m distances. We will not use the unlimited (>100 m)
+radius because the area surveyed would be arbitrary. On Day 2 we will see
+how to estimate the effective area sampled instead.
+
+First, the `y1` matrix will have columns for the counts in the 3
+different distance bands that we used to add 2 new `Count` column:
+
 ```{r}
 y1 <- mefa4::Xtab(~ SiteID + Dis, detect::josm$counts, subset = detect::josm$counts$SpeciesID == spp)
 head(y1)
 
 x$Count_10min_50m <- y1[rownames(x), "0-50m"]
 x$Count_10min_100m <- y1[rownames(x), "0-50m"] + y1[rownames(x), "50-100m"]
+```
 
+Not surprisingly, the mean count in the 0--50 m area and much smaller than 
+the counts in the 0--100 m area:
+
+```{r}
 mean(y1[, "0-50m"])
 mean(y1[, "0-50m"] + y1[, "50-100m"])
+```
 
+The mean density (abundance per unit area), however, shows the reverse pattern.
+Here we used units of 100 m, e.g. 50 m becomes 0.5, and 100 m becomes 1.
+This way, the density is calculated over a 100 x 100 $m^2$ area, that is 1 ha,
+commonly used for expressing density in the bird literature:
+
+```{r}
 mean(y1[, "0-50m"]) / (0.5^2 * pi)
 mean(y1[, "0-50m"] + y1[, "50-100m"]) / (1^2 * pi)
+```
 
+Why would the density over the 100 m area be smaller than the density over the
+50 m area? Take your guesses. We'll learn about this in the next 2 days.
+
+We add the survey area is calculated as $A = r^2 \pi$ and then take the log of
+if because we are using the log link function. We then update the formula
+to use `Count_10min_50m` on the left and `offset(logA_50m)` on the right:
+
+```{r}
 x$logA_50m <- log(0.5^2 * pi)
-x$logA_100m <- log(1^2 * pi)
-
-
 m3 <- update(m2, Count_10min_50m ~ . + offset(logA_50m))
-m4 <- update(m2, Count_10min_100m ~ . + offset(logA_100m))
 summary(m3)
-summary(m4)
+```
 
+We follow the same steps for the 100 m radius model:
+
+```{r}
+x$logA_100m <- log(1^2 * pi)
+m4 <- update(m2, Count_10min_100m ~ . + offset(logA_100m))
+summary(m4)
+```
+
+As for predicting with an offset, we will create a copy of `xnew`
+and add the 2 offset terms. Notice that we don't use the same values
+as we used for modeling, because we want predictions over a unit area of 1 ha,
+which is $log(1)=0$.
+
+```{r}
 xnew2 <- xnew
+
 xnew2$logA_50m <- 0
 xnew2$logA_100m <- 0
 
 xnew2$Pred_10min_50m <- predict(m3, xnew2, type = "response")
 xnew2$Pred_10min_100m <- predict(m4, xnew2, type = "response")
+```
 
+Density per unit area is higher for the 50 m model, similarly to what we have 
+seen before.
+
+```{r}
 mean(xnew2$Pred_10min_50m)
 mean(xnew2$Pred_10min_100m)
+```
 
+Let's compare the predictions:
+
+```{r}
 xnew2 |> ggplot(aes(x = Pred_10min_50m, y = Pred_10min_100m)) +
     geom_point() +
     geom_abline(intercept = 0, slope = 1, lty = 2) +
     theme_light()
-# 50 m density higher because detection is higher
 ```
 
 ## Duration effect
+
+Next we will inspect what effect the count duration has on our estimates.
+Follow the same approach to get the counts by sites and distance intervals
+after subsetting for our species and for the 0--3 minutes time interval:
 
 ```{r}
 y2 <- mefa4::Xtab(~ SiteID + Dis, detect::josm$counts,
     subset = detect::josm$counts$SpeciesID == spp &
         detect::josm$counts$Dur == "0-3min"
 )
-
 x$Count_3min_50m <- y2[rownames(x), "0-50m"]
 x$Count_3min_100m <- y2[rownames(x), "0-50m"] + y2[rownames(x), "50-100m"]
+```
 
+Same patterns for mean count and the empirical density as what we saw based on
+the 10 minutes counts:
+
+```{r}
 mean(y2[, "0-50m"])
 mean(y2[, "0-50m"] + y2[, "50-100m"])
 
 mean(y2[, "0-50m"]) / (0.5^2 * pi)
 mean(y2[, "0-50m"] + y2[, "50-100m"]) / (1^2 * pi)
+```
 
+The models:
+
+```{r}
 m5 <- update(m2, Count_3min_50m ~ . + offset(logA_50m))
-m6 <- update(m2, Count_3min_100m ~ . + offset(logA_100m))
 summary(m5)
-summary(m6)
 
+m6 <- update(m2, Count_3min_100m ~ . + offset(logA_100m))
+summary(m6)
+```
+
+Predictions using `xnew2` as before:
+
+```{r}
 xnew2$Pred_3min_50m <- predict(m5, xnew2, type = "response")
 xnew2$Pred_3min_100m <- predict(m6, xnew2, type = "response")
+```
 
+The 10 minutes estimates are higher due to accumulating more detections
+over the longer duration; the 50 m radius counts led to higher density estimates
+due to higher detectability compared to the 100 m radius counts:
 
-mean(xnew2$Pred_10min_50m)
-mean(xnew2$Pred_10min_100m)
-mean(xnew2$Pred_3min_50m)
-mean(xnew2$Pred_3min_100m)
+```{r}
+D_est <- c(
+    "10min 50m" = mean(xnew2$Pred_10min_50m),
+    "10min 100m" = mean(xnew2$Pred_10min_100m),
+    "3min 50m" = mean(xnew2$Pred_3min_50m),
+    "3min 100m" = mean(xnew2$Pred_3min_100m)
+)
+D_est
 
+barplot(D_est)
+```
+
+Make some plots to compare the site level predictions:
+
+```{r}
 xnew2 |> ggplot(aes(x = Pred_3min_50m, y = Pred_3min_100m)) +
     geom_point() +
     geom_abline(intercept = 0, slope = 1, lty = 2) +
@@ -213,15 +289,23 @@ xnew2 |> ggplot(aes(x = Pred_3min_100m, y = Pred_10min_100m)) +
     geom_point() +
     geom_abline(intercept = 0, slope = 1, lty = 2) +
     theme_light()
-# 50 m density higher because detection is higher
-# 3-min estimates substantially lower
 ```
 
 ## Accounting for different field protocols
 
-Mix of 3/10min 50/100m
+When we survey some areas, the survey protocol is the same for all sites.
+However, when we combine different datasets, we might find that
+each might have a slightly different sampling design.
 
-- predict for 10 min and unit area
+Some surveys might be 10 min (3--5--100 min) and unlimited radius
+(0--100--$\infty$ m), other might be 0--3 min and unlimited (0--$\infty$ m)
+without any time and distance bands.
+
+We will assign one of 4 survey protocols to each site and based on that:
+
+- the `Count` values corresponding to the time and distance intervals
+- set the log area for offset matching the protocol radii
+
 
 ```{r}
 Methods <- c("3min_50m", "3min_100m", "10min_50m", "10min_100m")
@@ -235,22 +319,115 @@ for (i in Methods) {
     x$Count_Rnd[x$Method == i] <- x[[paste0("Count_", i)]][x$Method == i]
 }
 x$logA_Rnd <- log(ifelse(x$Method %in% c("3min_50m", "10min_50m"), 0.5, 1)^2 * pi)
+```
 
+This next model will have `Count_Rnd` as the response, and we add
+the `Method` variable and the offset `offset(logA_Rnd)`:
+
+```{r}
 m7 <- update(m2, Count_Rnd ~ . + Method + offset(logA_Rnd))
 summary(m7)
-# 10min-50m ~0 effect: offset is working
+```
 
+When predicting, we pick the method that leads to highest counts (10 min) and
+smalles detection error (50 m radius), define the log area offset as 0:
+
+```{r}
 xnew2$logA_Rnd <- 0
 xnew2$Method <- "10min_50m" # highest duration, highest detection
 xnew2$Pred_Rnd <- predict(m7, xnew2, type = "response")
 
 mean(xnew2$Pred_Rnd)
+```
 
+The mean density is 0.46 male birds per ha, but it can reach a maximum of 1.1
+males per ha for fully deciduous habitats:
+
+```{r}
 xnew2 |> ggplot(aes(x = Decid, y = Pred_Rnd)) +
     geom_point() +
     geom_smooth() +
     theme_light() +
     ylab("Naive density [male individuals/ha]")
+```
+
+# Mapping results
+
+The habitat covariates came from detailed (vector based) habitat mapping,
+these were than summarized by 1 $km^2$ pixels using the area proportions
+of these land cover types. The raster file in the `data` folder
+has the corresponding layers. 
+
+```{r}
+library(sf)
+library(terra)
+
+r <- rast("../data/josm-landcover.tif")
+
+plot(r, col = hcl.colors(50, "Lajolla"), axes = FALSE)
+```
+
+By fixing the nuisance variables to a constant
+value and adding our offset term, we can make predictions.
+
+Without detailing all the steps, here is how to make raster predictions
+using `m7`:
+
+```{r}
+rd <- data.frame(
+    as.matrix(r),
+    WindStart = min(x$WindStart),
+    TSSR = min(x$TSSR),
+    DAY = min(x$DAY),
+    Method = "10min_50m",
+    logA_Rnd = 0
+)
+
+rp <- r[[1]]
+names(rp) <- "Count"
+values(rp) <- predict(m7, rd, type = "response")
+
+plot(rp, axes = FALSE)
+```
+
+Next we add latitude and longitude (with interactions and quadratic terms)
+as new terms to better capture spatial patterns:
+
+```{r}
+xy <- sf::st_as_sf(x, coords = c("Longitude", "Latitude"), crs = 4269) # NAD83 EPSG:4269
+## NAD83 / Alberta 10-TM (Forest) EPSG:3400
+xy <- sf::st_transform(xy, sf::st_crs(r))
+coords <- sf::st_coordinates(xy)
+x$X <- coords[, "X"]
+x$Y <- coords[, "Y"]
+
+m8 <- update(m7, . ~ . + X * Y + I(X^2) * I(Y^2))
+
+rp2 <- rp
+rxy <- crds(r, na.rm = FALSE)
+colnames(rxy) <- c("X", "Y")
+rd <- data.frame(rd, rxy)
+values(rp2) <- predict(m8, rd, type = "response")
+
+plot(rast(list(rp, rp2)), axes = FALSE)
+
+mean(values(rp), na.rm = TRUE)
+mean(values(rp2), na.rm = TRUE)
+
+2 * sum(values(rp), na.rm = TRUE) * 100
+2 * sum(values(rp2), na.rm = TRUE) * 100
+```
+
+
+```{r}
+#| eval: FALSE
+library(mapview)
+
+ct <- xy[, "Count"]
+ct$Count[ct$Count > 0] <- 1
+ct$Count <- as.factor(ct$Count)
+
+mapview(rp2) + mapview(ct)
 ```
 
 # Next
